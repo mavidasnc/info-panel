@@ -16,6 +16,69 @@ const SPINNER = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', 
 // Stati in cui un agente sta lavorando (spinner animato)
 const ACTIVE = ['running', 'pending', 'waiting']
 
+// Tempo massimo (in ms) tra due clic sulla stessa cartella perché contino come doppio clic
+const DOUBLE_PRESS_MS = 400
+
+// Icona di una voce dell'albero: glifo Nerd Font e colore (hex, perché i colori di tema non coprono queste tinte)
+export type Icon = { glyph: string; color: string }
+
+// Cartelle: gialle, aperte o chiuse
+const FOLDER: Icon = { glyph: '\u{e5ff}', color: '#e5c07b' } // nf-custom-folder
+const FOLDER_OPEN: Icon = { glyph: '\u{e5fe}', color: '#e5c07b' } // nf-custom-folder_open
+
+// File senza una voce più precisa
+const FILE: Icon = { glyph: '\u{f016}', color: '#7f848e' } // nf-fa-file_o
+
+// Icone dei file: prima si cerca per nome esatto (minuscolo), poi per estensione (minuscola, con il punto)
+const ICONS: Record<string, Icon> = {
+  // Nomi esatti (.env.local, .env.production... usano la voce di .env)
+  'package.json': { glyph: '\u{e616}', color: '#cb3837' }, // nf-seti-npm
+  'composer.json': { glyph: '\u{e783}', color: '#c0864b' }, // nf-dev-composer
+  dockerfile: { glyph: '\u{e650}', color: '#2496ed' }, // nf-seti-docker
+  '.gitignore': { glyph: '\u{e65d}', color: '#f1502f' }, // nf-seti-git
+  '.gitattributes': { glyph: '\u{e65d}', color: '#f1502f' }, // nf-seti-git
+  '.env': { glyph: '\u{f084}', color: '#d19a66' }, // nf-fa-key
+  // Estensioni
+  '.php': { glyph: '\u{e608}', color: '#a074c4' }, // nf-seti-php
+  '.js': { glyph: '\u{e60c}', color: '#e5c07b' }, // nf-seti-javascript
+  '.mjs': { glyph: '\u{e60c}', color: '#e5c07b' }, // nf-seti-javascript
+  '.cjs': { glyph: '\u{e60c}', color: '#e5c07b' }, // nf-seti-javascript
+  '.ts': { glyph: '\u{e628}', color: '#61afef' }, // nf-seti-typescript
+  '.jsx': { glyph: '\u{e625}', color: '#56b6c2' }, // nf-seti-react
+  '.tsx': { glyph: '\u{e625}', color: '#56b6c2' }, // nf-seti-react
+  '.json': { glyph: '\u{e60b}', color: '#e5c07b' }, // nf-seti-json
+  '.md': { glyph: '\u{e609}', color: '#dcdfe4' }, // nf-seti-markdown
+  '.html': { glyph: '\u{e60e}', color: '#d19a66' }, // nf-seti-html
+  '.css': { glyph: '\u{e614}', color: '#61afef' }, // nf-seti-css
+  '.scss': { glyph: '\u{e603}', color: '#e06c9f' }, // nf-seti-sass
+  '.sass': { glyph: '\u{e603}', color: '#e06c9f' }, // nf-seti-sass
+  '.py': { glyph: '\u{e606}', color: '#61afef' }, // nf-seti-python
+  '.yml': { glyph: '\u{e6a8}', color: '#e06c75' }, // nf-seti-yml
+  '.yaml': { glyph: '\u{e6a8}', color: '#e06c75' }, // nf-seti-yml
+  '.png': { glyph: '\u{e60d}', color: '#98c379' }, // nf-seti-image
+  '.jpg': { glyph: '\u{e60d}', color: '#98c379' }, // nf-seti-image
+  '.jpeg': { glyph: '\u{e60d}', color: '#98c379' }, // nf-seti-image
+  '.gif': { glyph: '\u{e60d}', color: '#98c379' }, // nf-seti-image
+  '.webp': { glyph: '\u{e60d}', color: '#98c379' }, // nf-seti-image
+  '.ico': { glyph: '\u{e60d}', color: '#98c379' }, // nf-seti-image
+  '.svg': { glyph: '\u{e698}', color: '#d19a66' }, // nf-seti-svg
+  '.sh': { glyph: '\u{e691}', color: '#98c379' }, // nf-seti-shell
+  '.bash': { glyph: '\u{e691}', color: '#98c379' }, // nf-seti-shell
+  '.ps1': { glyph: '\u{e683}', color: '#61afef' }, // nf-seti-powershell
+  '.zip': { glyph: '\u{e6aa}', color: '#c8a165' }, // nf-seti-zip
+  '.gz': { glyph: '\u{e6aa}', color: '#c8a165' }, // nf-seti-zip
+  '.tar': { glyph: '\u{e6aa}', color: '#c8a165' }, // nf-seti-zip
+  '.7z': { glyph: '\u{e6aa}', color: '#c8a165' }, // nf-seti-zip
+  '.pdf': { glyph: '\u{e67d}', color: '#e06c75' }, // nf-seti-pdf
+  '.txt': { glyph: '\u{e64e}', color: '#7f848e' }, // nf-seti-text
+  '.log': { glyph: '\u{e64e}', color: '#7f848e' }, // nf-seti-text
+  '.sql': { glyph: '\u{e64d}', color: '#56b6c2' }, // nf-seti-db
+  '.lock': { glyph: '\u{e672}', color: '#7f848e' }, // nf-seti-lock
+  '.toml': { glyph: '\u{e615}', color: '#7f848e' }, // nf-seti-config
+  '.ini': { glyph: '\u{e615}', color: '#7f848e' }, // nf-seti-config
+  '.conf': { glyph: '\u{e615}', color: '#7f848e' }, // nf-seti-config
+}
+
 // Listing di una cartella già filtrati e ordinati, per percorso relativo ('' = radice)
 const listings = atom({ plugin: 'info-panel', key: 'listings' } as const, {})
 
@@ -40,8 +103,11 @@ const frame = atom({ plugin: 'info-panel', key: 'frame' } as const, 0)
 // Nome della cartella di lavoro, per l'intestazione
 const rootName = atom({ plugin: 'info-panel', key: 'rootName' } as const, '')
 
-// Una riga dell'albero già "appiattita": profondità e stato aperto servono al disegno
-export type TreeRow = { path: string; name: string; kind: TreeEntry['kind']; depth: number; isOpen: boolean }
+// Ultimo clic su una cartella (percorso e istante); si perde al reload, serve solo a riconoscere il doppio clic
+let lastPress: { path: string; at: number } | undefined
+
+// Una riga dell'albero già "appiattita": profondità, stato aperto e guide ad albero servono al disegno
+export type TreeRow = { path: string; name: string; kind: TreeEntry['kind']; depth: number; isOpen: boolean; prefix: string }
 
 // Toglie .git e node_modules, poi cartelle prima e file dopo, ognuno in ordine alfabetico senza distinguere le maiuscole
 export const sortAndFilter = (entries: readonly TreeEntry[]): TreeEntry[] =>
@@ -63,25 +129,30 @@ export const sortAndFilter = (entries: readonly TreeEntry[]): TreeEntry[] =>
 export const flatten = (tree: Record<string, TreeEntry[]>, open: readonly string[]): TreeRow[] => {
   const rows: TreeRow[] = []
 
-  const visit = (parent: string, depth: number) => {
-    for (const entry of tree[parent] ?? []) {
+  // `guides` sono le guide degli antenati (3 colonne per livello): │ se l'antenato ha fratelli dopo di sé, altrimenti spazi
+  const visit = (parent: string, depth: number, guides: string) => {
+    const children = tree[parent] ?? []
+
+    for (const [index, entry] of children.entries()) {
       const path = parent ? `${parent}/${entry.name}` : entry.name
       const isOpen = entry.kind === 'dir' && open.includes(path) && path in tree
-      rows.push({ path, name: entry.name, kind: entry.kind, depth, isOpen })
+      // L'ultimo figlio chiude il ramo con └─, gli altri usano ├─
+      const isLast = index === children.length - 1
+      rows.push({ path, name: entry.name, kind: entry.kind, depth, isOpen, prefix: `${guides}${isLast ? '└─ ' : '├─ '}` })
       if (isOpen) {
-        visit(path, depth + 1)
+        visit(path, depth + 1, `${guides}${isLast ? '   ' : '│  '}`)
       }
     }
   }
 
-  visit('', 0)
+  visit('', 0, '')
 
   return rows
 }
 
-// Divide le righe del corpo: circa il 70% all'albero (intestazione compresa), il resto agli agenti (separatore compreso, almeno 2 righe)
+// Divide le righe utili del corpo: circa l'80% all'albero (intestazione compresa), il resto agli agenti (separatore compreso, almeno 2 righe)
 export const split = (bodyRows: number) => {
-  const treeRows = Math.min(Math.max(3, Math.floor(bodyRows * 0.7)), Math.max(1, bodyRows - 2))
+  const treeRows = Math.min(Math.max(3, Math.floor(bodyRows * 0.8)), Math.max(1, bodyRows - 2))
 
   return { treeRows, agentRows: Math.max(0, bodyRows - treeRows) }
 }
@@ -112,11 +183,37 @@ export const clip = <T,>(items: readonly T[], lines: number) => {
   return { shown, hidden: lines >= 2 ? items.length - shown.length : 0 }
 }
 
+// Icona di una voce dell'albero: cartelle gialle (aperta o chiusa), file per nome esatto, poi per estensione, altrimenti quella di default
+export const iconFor = (name: string, kind: TreeEntry['kind'], isOpen: boolean): Icon => {
+  if (kind === 'dir') {
+    return isOpen ? FOLDER_OPEN : FOLDER
+  }
+  // Nome minuscolo; tutti i .env.* (local, production...) condividono la voce di .env
+  const lower = name.toLowerCase()
+  const byName = lower.startsWith('.env.') ? '.env' : lower
+  // Estensione col punto; un punto iniziale (.gitignore) non è un'estensione
+  const dot = lower.lastIndexOf('.')
+  const byExtension = dot > 0 ? lower.slice(dot) : ''
+
+  // Object.hasOwn evita che nomi come "constructor" peschino dal prototipo
+  for (const key of [byName, byExtension]) {
+    if (Object.hasOwn(ICONS, key)) {
+      return ICONS[key] ?? FILE
+    }
+  }
+
+  return FILE
+}
+
+// Doppio clic: stessa cartella dell'ultimo clic, a non più di 400 ms di distanza
+export const isDoublePress = (last: { path: string; at: number } | undefined, path: string, now: number) =>
+  last !== undefined && last.path === path && now - last.at <= DOUBLE_PRESS_MS
+
 // Un agente lavora quando il suo stato è running, pending o waiting
 const isActive = (status: string) => ACTIVE.includes(status)
 
 // Icona di stato: spinner se attivo, simbolo fisso per gli stati finali o a riposo
-const iconFor = (status: string, tick: number) => {
+const statusIconFor = (status: string, tick: number) => {
   if (isActive(status)) {
     return { glyph: SPINNER[tick % SPINNER.length] ?? '', color: 'claude' }
   }
@@ -164,9 +261,53 @@ const toggle = async ($: EngineInterface, path: string, windowRows: number) => {
   await update($, treeOffset, offset => Math.min(offset, Math.max(0, rows.length - windowRows)))
 }
 
+// Apre Esplora risorse sulla cartella (solo Windows); explorer.exe risponde 1 anche quando apre, quindi l'exit code si ignora
+const openInExplorer = async ($: EngineInterface, path: string) => {
+  try {
+    const cwd = await $.session.cwd()
+    await $.process.run(['explorer.exe', `${cwd}\\${path.split('/').join('\\')}`])
+  } catch {
+    // Chiamata rifiutata o comando non avviabile (per esempio fuori da Windows)
+    $.ui.toast('Impossibile aprire Esplora risorse')
+  }
+}
+
+// Clic su una cartella: apre o chiude subito; il secondo clic entro 400 ms la riporta com'era e apre Esplora risorse
+const pressFolder = async ($: EngineInterface, path: string, windowRows: number) => {
+  const now = await $.clock.now()
+
+  if (isDoublePress(lastPress, path, now)) {
+    lastPress = undefined
+    await toggle($, path, windowRows)
+    await openInExplorer($, path)
+
+    return
+  }
+
+  lastPress = { path, at: now }
+  await toggle($, path, windowRows)
+}
+
+// Clic su un file: inserisce @percorso (con uno spazio dopo) nel prompt, alla posizione del cursore
+const mentionFile = async ($: EngineInterface, path: string) => {
+  await $.prompt.fill({ text: `@${path} `, mode: 'insert' })
+}
+
+// Clic su un agente: apre il suo transcript nella vista principale (l'agente principale non ha agentId)
+const viewAgent = async ($: EngineInterface, id: string) => {
+  const shown = await $.ui.view(id === 'main' ? {} : { agentId: id })
+
+  if (shown.deny) {
+    $.ui.toast(shown.deny)
+  }
+}
+
 export const register: Register = on => {
   // All'avvio (e dopo ogni reload) registra il comando, carica la radice, apre il pane e avvia i timer
   on('session.start', async ($, e, next) => {
+    // Nessun clic precedente: un doppio clic non può nascere da una sessione passata
+    lastPress = undefined
+
     await $.command.register({
       name: 'info-panel',
       description: 'Apre il pannello con l\'albero della cartella e gli agenti',
@@ -245,9 +386,11 @@ export const register: Register = on => {
 
   // Rotella sul pane: se il puntatore è sull'albero lo scorre da sé, altrimenti lascia fare al motore
   on('ui.scroll', { component: 'Pane', requestId: PANE }, async ($, e, next) => {
-    const { treeRows } = split(e.bodyRows)
+    // Il pane ha 1 riga di padding in alto e 1 in basso: le righe utili sono bodyRows - 2
+    const { treeRows } = split(Math.max(0, e.bodyRows - 2))
 
-    if (e.pointer && e.pointer.row >= treeRows) {
+    // pointer.row conta dal bordo del corpo: l'albero parte dalla riga 1 (la riga 0 è il padding, sopra l'albero, e scorre anche lui)
+    if (e.pointer && e.pointer.row - 1 >= treeRows) {
       return next(e)
     }
 
@@ -264,9 +407,9 @@ export const register: Register = on => {
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Text, Button } = $.ui.resolve(e)
 
-    // Spazio a disposizione: colonne del corpo e righe divise tra albero e agenti
-    const cols = Math.max(1, e.props.bodyColumns)
-    const { treeRows, agentRows } = split(e.props.scroll.bodyRows)
+    // Spazio a disposizione, tolto 1 di padding per lato: colonne utili e righe divise tra albero e agenti
+    const cols = Math.max(1, e.props.bodyColumns - 2)
+    const { treeRows, agentRows } = split(Math.max(0, e.props.scroll.bodyRows - 2))
     const windowRows = Math.max(0, treeRows - 1)
     const agentLines = Math.max(0, agentRows - 1)
 
@@ -303,7 +446,7 @@ export const register: Register = on => {
     const separator = fit(title + '─'.repeat(Math.max(0, cols - title.length)), cols)
 
     return (
-      <Box flexDirection="column">
+      <Box flexDirection="column" padding={1}>
         <Box flexDirection="row">
           <Text weight="bold">{fit(`${name}/`, cols - 2)}</Text>
           <Text> </Text>
@@ -311,32 +454,54 @@ export const register: Register = on => {
             ↻
           </Button>
         </Box>
-        {visible.map(row =>
-          row.kind === 'dir' ? (
-            <Button key={`dir:${row.path}`} plain onPress={() => toggle($, row.path, windowRows)}>
-              {fit(`${'  '.repeat(row.depth)}${row.isOpen ? '▾' : '▸'} ${row.name}/`, cols)}
+        {visible.map(row => {
+          const icon = iconFor(row.name, row.kind, row.isOpen)
+          // Se le guide non ci stanno si perdono quelle a sinistra e resta la coda col connettore (├─ o └─), con 1 colonna per il nome
+          const room = Math.max(0, cols - 3)
+          const guides = row.prefix.length > room ? row.prefix.slice(row.prefix.length - room) : row.prefix
+          // Il nome lascia posto alle guide, al glifo e allo spazio che lo segue; le cartelle hanno la / finale
+          const label = fit(row.kind === 'dir' ? `${row.name}/` : row.name, cols - guides.length - 2)
+
+          // Guide ad albero in grigio, icona colorata, poi il nome
+          const line = [
+            <Text dimColor>{guides}</Text>,
+            <Text color={icon.color}>{icon.glyph}</Text>,
+            ` ${label}`,
+          ]
+
+          // La riga di avviso "(non leggibile)" non è cliccabile
+          if (row.kind === 'other') {
+            return <Text>{line}</Text>
+          }
+
+          return row.kind === 'dir' ? (
+            <Button key={`dir:${row.path}`} plain onPress={() => pressFolder($, row.path, windowRows)}>
+              {line}
             </Button>
           ) : (
-            <Text>{fit(`${'  '.repeat(row.depth)}${row.name}`, cols)}</Text>
-          ),
-        )}
+            <Button key={`file:${row.path}`} plain onPress={() => mentionFile($, row.path)}>
+              {line}
+            </Button>
+          )
+        })}
         {fillers}
         {agentRows > 0 ? <Text dimColor>{separator}</Text> : null}
         {shown.map(entry => {
-          const { glyph, color } = iconFor(entry.status, tick)
-          const modelText = shortModel(entry.model)
+          const { glyph, color } = statusIconFor(entry.status, tick)
+          // Il modello si tronca a sua volta, così icona, nome (almeno 1 colonna) e modello restano entro la larghezza
+          const modelText = fit(shortModel(entry.model), cols - 4)
           // Il nome lascia posto all'icona, allo spazio e al modello
           const room = Math.max(1, cols - 2 - modelText.length - 1)
           const isDone = !isActive(entry.status) && entry.id !== 'main'
 
           return (
-            <Text wrap="truncate-end" dimColor={isDone}>
+            <Button key={`agent:${entry.id}`} plain dimColor={isDone} onPress={() => viewAgent($, entry.id)}>
               <Text color={color}>{glyph}</Text>
               {' '}
               {fit(entry.label, room)}
               {' '}
               <Text dimColor>{modelText}</Text>
-            </Text>
+            </Button>
           )
         })}
         {hidden > 0 ? <Text dimColor>{fit(`+${hidden} altri`, cols)}</Text> : null}
