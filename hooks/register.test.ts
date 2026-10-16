@@ -384,14 +384,14 @@ test('la rotella sull albero lo scorre da sé, fuori dall albero lascia fare al 
   on('ui.scroll', () => ({}))
   await $.session.start(START)
 
-  // 8 righe, 6 utili col padding: 4 all'albero (finestra di 3 sotto l'intestazione); aprendo src le voci diventano 4
-  const ui = await $.ui.mount({ plugin: 'info-panel', surface: 'terminal', component: 'Pane', requestId: 'info-panel', props: props(8) })
+  // 9 righe, 6 utili tra padding e riga della versione: 4 all'albero (finestra di 3 sotto l'intestazione); aprendo src le voci diventano 4
+  const ui = await $.ui.mount({ plugin: 'info-panel', surface: 'terminal', component: 'Pane', requestId: 'info-panel', props: props(9) })
   await ui.press({ key: 'dir:src' })
   expect(await ui.find({ text: 'docs' })).toBeDefined()
   expect(await ui.find({ text: 'README.md' })).toBeUndefined()
 
   // Una tacca di rotella sopra l'albero (riga 1, la 0 è il padding): lo scorre il mod e il motore non muove nulla
-  const input = { component: 'Pane', requestId: 'info-panel', offset: 0, by: 1, bodyRows: 8, contentRows: 8, origin: { kind: 'person' } }
+  const input = { component: 'Pane', requestId: 'info-panel', offset: 0, by: 1, bodyRows: 9, contentRows: 9, origin: { kind: 'person' } }
   const onTree = await $.ui.scroll({ ...input, pointer: { column: 3, row: 1 } } as never)
   expect(onTree.deny).toMatch(/info-panel/)
   expect(await ui.find({ text: 'docs' })).toBeUndefined()
@@ -656,4 +656,97 @@ test('un clic su un agente apre il suo transcript, sul principale la vista princ
     expect(views).toEqual([{ agentId: 'a1' }, {}])
     await ui.unmount()
   }
+})
+
+// Il motore sotto fs.read: risponde con un plugin.json che porta la versione indicata
+const manifest = (on: On, version: string) => on('fs.read', () => ({ value: JSON.stringify({ name: 'info-panel', version }) }))
+
+test('in fondo al pannello c\'è la versione letta da plugin.json, su ogni superficie', async ($, on) => {
+  world(on)
+  manifest(on, '9.9.9')
+  await $.session.start(START)
+
+  for (const surface of ['terminal', 'desktop'] as const) {
+    const ui = await $.ui.mount({ plugin: 'info-panel', surface, component: 'Pane', requestId: 'info-panel', props: props(20) })
+
+    // La versione è l'ultima riga del pannello, sotto la sezione agenti
+    const rows = (await rowsOf(ui)) as Node[]
+    expect(await ui.find({ text: 'info-panel v9.9.9' })).toBeDefined()
+    expect(JSON.stringify(rows.at(-1))).toContain('info-panel v9.9.9')
+    await ui.unmount()
+  }
+})
+
+test('con un plugin.json illeggibile la versione è n/d e il pannello si disegna lo stesso', async ($, on) => {
+  world(on)
+  on('fs.read', () => ({ value: 'non è json' }))
+  await $.session.start(START)
+
+  const ui = await $.ui.mount({ plugin: 'info-panel', surface: 'terminal', component: 'Pane', requestId: 'info-panel', props: props(20) })
+
+  expect(await ui.find({ text: 'info-panel n/d' })).toBeDefined()
+  expect(await ui.find({ text: /Agenti \(1\)/ })).toBeDefined()
+})
+
+test('la riga della versione non fa superare le righe del pannello e sta in bodyColumns - 2', async ($, on) => {
+  world(on)
+  manifest(on, '12.345.678')
+  await $.session.start(START)
+
+  for (const bodyColumns of [8, 14, 40]) {
+    const ui = await $.ui.mount({ plugin: 'info-panel', surface: 'terminal', component: 'Pane', requestId: 'info-panel', props: props(20, bodyColumns) })
+    const rows = (await rowsOf(ui)) as Node[]
+
+    // Righe utili: 20 meno 2 di padding
+    expect(rows.length).toBeLessThanOrEqual(18)
+    for (const row of rows) {
+      expect(widthOf(row)).toBeLessThanOrEqual(bodyColumns - 2)
+    }
+    await ui.unmount()
+  }
+})
+
+// Il motore sotto ui.panes e ui.close: dice se il pannello è disegnato e registra le chiusure
+const panes = (on: On, isPlaced: boolean | undefined) => {
+  const closed: string[] = []
+  on('ui.panes', () => ({
+    value: isPlaced === undefined ? [] : [{ id: 'info-panel', title: 'Info', isShown: isPlaced, isFocused: false, isPlaced }],
+  }))
+  on('ui.close', (_$, e) => {
+    closed.push(e.id)
+
+    return { value: undefined }
+  })
+
+  return closed
+}
+
+test('/info-panel con il pannello aperto lo nasconde', async ($, on) => {
+  world(on)
+  const closed = panes(on, true)
+  await $.session.start(START)
+
+  const result = await $.command.run({ command: 'info-panel', args: '' })
+
+  expect(closed).toEqual(['info-panel'])
+  expect(result.text).toBe('Pannello info nascosto.')
+})
+
+test('/info-panel con il pannello chiuso o in attesa di un terminale più largo lo apre', async ($, on) => {
+  world(on)
+  const closed = panes(on, undefined)
+  await $.session.start(START)
+
+  // Nessun pannello: lo apre
+  expect((await $.command.run({ command: 'info-panel', args: '' })).text).toBe('Pannello info aperto.')
+  expect(closed).toEqual([])
+})
+
+test('/info-panel con il pannello in attesa (non disegnato) lo apre invece di chiuderlo', async ($, on) => {
+  world(on)
+  const closed = panes(on, false)
+  await $.session.start(START)
+
+  expect((await $.command.run({ command: 'info-panel', args: '' })).text).toBe('Pannello info aperto.')
+  expect(closed).toEqual([])
 })

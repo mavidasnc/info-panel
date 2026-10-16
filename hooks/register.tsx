@@ -169,6 +169,12 @@ const rootName = atom({ plugin: 'info-panel', key: 'rootName' } as const, '')
 // Percorso assoluto della cartella di lavoro: il timer lo confronta con $.session.cwd() per accorgersi di un /cd
 const cwdState = atom({ plugin: 'info-panel', key: 'cwd' } as const, '')
 
+// Versione del mod, letta dal suo plugin.json all'avvio: in fondo al pannello conferma che è quella aggiornata
+const version = atom({ plugin: 'info-panel', key: 'version' } as const, '')
+
+// Righe riservate in fondo al pannello alla versione del mod
+const FOOTER_ROWS = 1
+
 // Una riga dell'albero già "appiattita": profondità, stato aperto e guide ad albero servono al disegno
 export type TreeRow = { path: string; name: string; kind: TreeEntry['kind']; depth: number; isOpen: boolean; prefix: string }
 
@@ -468,6 +474,14 @@ export const register: Register = (on, options) => {
     await update($, models, current => ({ ...current, main: model }))
     await loadListings($, [''])
 
+    // Versione del mod, dal suo plugin.json (il file è del plugin, quindi leggibile); se manca resta vuota e il pannello mostra n/d
+    try {
+      const manifest = JSON.parse(await $.fs.read(`${$.plugin.root}/.claude-plugin/plugin.json`))
+      await update($, version, () => String(manifest.version ?? ''))
+    } catch {
+      // manifest illeggibile: la versione resta non nota
+    }
+
     // Apre il pane; sul terminale stretto resta in attesa di uno più largo
     void $.ui.open({ id: PANE, title: 'Info', columns: PANE_COLUMNS })
 
@@ -501,8 +515,17 @@ export const register: Register = (on, options) => {
     return result
   })
 
-  // /info-panel: riapre il pane, con l'input della persona si piazza a qualsiasi larghezza
+  // /info-panel: alterna pannello visibile e nascosto; aprendolo, con l'input della persona si piazza a qualsiasi larghezza
   on('command.run', { command: 'info-panel' }, async $ => {
+    // Il pannello conta come aperto solo se è disegnato: uno in attesa di un terminale più largo si apre
+    const isOpen = (await $.ui.panes()).some(pane => pane.id === PANE && pane.isPlaced)
+
+    if (isOpen) {
+      await $.ui.close({ id: PANE })
+
+      return { text: 'Pannello info nascosto.' }
+    }
+
     await $.ui.open({ id: PANE, title: 'Info', columns: PANE_COLUMNS })
 
     return { text: 'Pannello info aperto.' }
@@ -536,8 +559,8 @@ export const register: Register = (on, options) => {
 
   // Rotella sul pane: se il puntatore è sull'albero lo scorre da sé, altrimenti lascia fare al motore
   on('ui.scroll', { component: 'Pane', requestId: PANE }, async ($, e, next) => {
-    // Il pane ha 1 riga di padding in alto e 1 in basso: le righe utili sono bodyRows - 2
-    const { treeRows } = split(Math.max(0, e.bodyRows - 2))
+    // Il pane ha 1 riga di padding in alto e 1 in basso, più la riga della versione: le righe utili sono bodyRows - 2 - FOOTER_ROWS
+    const { treeRows } = split(Math.max(0, e.bodyRows - 2 - FOOTER_ROWS))
 
     // pointer.row conta dal bordo del corpo: l'albero parte dalla riga 1 (la riga 0 è il padding, sopra l'albero, e scorre anche lui)
     if (e.pointer && e.pointer.row - 1 >= treeRows) {
@@ -559,12 +582,12 @@ export const register: Register = (on, options) => {
 
     // Spazio a disposizione, tolto 1 di padding per lato: colonne utili e righe divise tra albero e agenti
     const cols = Math.max(1, e.props.bodyColumns - 2)
-    const { treeRows, agentRows } = split(Math.max(0, e.props.scroll.bodyRows - 2))
+    const { treeRows, agentRows } = split(Math.max(0, e.props.scroll.bodyRows - 2 - FOOTER_ROWS))
     const windowRows = Math.max(0, treeRows - 1)
     const agentLines = Math.max(0, agentRows - 1)
 
     // Stato da cui si disegna
-    const [tree, open, offsetNow, agentList, modelOf, isRunning, tick, name] = await Promise.all([
+    const [tree, open, offsetNow, agentList, modelOf, isRunning, tick, name, modVersion] = await Promise.all([
       read($, listings),
       read($, expanded),
       read($, treeOffset),
@@ -573,6 +596,7 @@ export const register: Register = (on, options) => {
       read($, isMainRunning),
       read($, frame),
       read($, rootName),
+      read($, version),
     ])
 
     // Finestra dell'albero: la prima riga visibile non supera mai l'ultima possibile, le righe che mancano sono vuote
@@ -689,6 +713,7 @@ export const register: Register = (on, options) => {
           )
         })}
         {hidden > 0 ? <Text dimColor>{fit(`+${hidden} altri`, cols)}</Text> : null}
+        <Text dimColor>{fit(`info-panel ${modVersion ? `v${modVersion}` : 'n/d'}`, cols)}</Text>
       </Box>
     )
   })

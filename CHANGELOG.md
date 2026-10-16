@@ -2,6 +2,18 @@
 
 Formato basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/).
 
+## [0.4.0] - 2026-10-16
+
+### Aggiunto
+- La versione del mod (`info-panel vX.Y.Z`, letta da `plugin.json`) in fondo al pannello, in grigio: conferma che l'aggiornamento è andato a buon fine. Se il file non è leggibile mostra `n/d`.
+- Valore di stato `version` nel contratto dei tipi.
+- Screenshot illustrativo in `docs/info-panel.png`, richiamato dal README.
+
+### Modificato
+- `/info-panel` ora alterna: chiude il pannello se è disegnato, lo apre altrimenti (anche se era in attesa di un terminale più largo). Prima lo riapriva soltanto.
+- Il pannello riserva una riga alla versione: albero e agenti dividono una riga utile in meno.
+- Il README descrive l'installazione da GitHub (`/plugin install info-panel --marketplace mavidasnc/info-panel`) e l'aggiornamento. Il repository è pubblico.
+
 ## [0.3.1] - 2026-10-16
 
 ### Corretto

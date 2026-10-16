@@ -2,6 +2,10 @@
 
 Mod per Claude Code che apre un pannello a lato del transcript, diviso in due sezioni:
 
+![Il pannello con l'albero della cartella, gli agenti e la versione del mod](docs/info-panel.png)
+
+L'immagine è un'illustrazione con valori di esempio.
+
 - **In alto (circa 80%)**: l'albero della cartella di lavoro, con le guide `├─`, `└─` e `│` che mostrano
   l'indentazione e un'icona per tipo di file (cartelle gialle, file per famiglia: PHP, JavaScript,
   TypeScript, JSON, Markdown, immagini, archivi e così via).
@@ -24,6 +28,9 @@ Mod per Claude Code che apre un pannello a lato del transcript, diviso in due se
 
 Attorno al pannello c'è 1 riga e 1 colonna di padding.
 
+In fondo al pannello, in grigio, c'è la versione del mod (`info-panel v0.4.0`), letta dal suo `plugin.json`:
+serve a controllare di avere installata la versione aggiornata (`n/d` se il file non è leggibile).
+
 Il modello di ogni agente si ricava dalle richieste al modello (hook `turn.step`), perché l'elenco degli agenti
 non lo riporta; finché un agente non ha fatto una richiesta mostra `n/d`.
 
@@ -40,21 +47,26 @@ o da `/plugin`; il mod si ricarica da solo con il nuovo valore.
 
 ## Comandi
 
-- `/info-panel`: riapre il pannello (a qualsiasi larghezza del terminale, perché parte da un'azione della persona).
+- `/info-panel`: nasconde il pannello se è aperto, lo riapre se è chiuso (a qualsiasi larghezza del terminale,
+  perché parte da un'azione della persona). Un pannello ancora in attesa di un terminale più largo conta come chiuso e si apre.
 
 All'avvio della sessione il pannello si apre da solo solo se il terminale è abbastanza largo
-(almeno 144 colonne in fullscreen); altrimenti resta in attesa o si apre con `/info-panel`.
+(almeno 144 colonne in fullscreen); altrimenti resta in attesa o si apre con `/info-panel`. Ogni nuova sessione riparte con il pannello aperto.
 
 ## Installazione
 
 Serve Claude Code 2.1.300 o successivo, da terminale, con il layout fullscreen per avere il pannello a lato.
 
 ```
-claude plugin marketplace add <percorso>/info-panel
-claude plugin install info-panel@mavida-info-panel
+/plugin install info-panel --marketplace mavidasnc/info-panel
 ```
 
-Il marketplace è la cartella stessa: le modifiche si applicano con `/reload-plugins`, senza nuove versioni.
+Confermare con `y` l'aggiunta del marketplace e scegliere lo scope `user` per averlo in ogni progetto.
+
+## Aggiornamento
+
+Da `/plugin`, sezione dei marketplace, aggiornare `mavida-info-panel` e poi il plugin `info-panel`;
+quindi `/reload-plugins`. La versione in fondo al pannello conferma che l'aggiornamento è andato a buon fine.
 
 ## Sviluppo
 
@@ -63,6 +75,9 @@ claude plugin validate .
 claude plugin test .
 claude --plugin-dir <percorso>/info-panel
 ```
+
+In alternativa il marketplace può essere la cartella stessa
+(`claude plugin marketplace add <percorso>/info-panel`): le modifiche si applicano con `/reload-plugins`.
 
 La struttura segue le convenzioni dei mod: `hooks/register.tsx` contiene la logica,
 `types/index.d.ts` il contratto dello stato, `hooks/register.test.ts` i test.

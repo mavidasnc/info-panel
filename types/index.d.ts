@@ -25,6 +25,8 @@ declare module 'claude-code' {
       rootName: string
       // Percorso assoluto della cartella di lavoro, per accorgersi di un /cd
       cwd: string
+      // Versione del mod, dal suo plugin.json, mostrata in fondo al pannello
+      version: string
     }
   }
 }
