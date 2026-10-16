@@ -1,6 +1,6 @@
 {
   "name": "info-panel",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Pannello laterale con l'albero della cartella di lavoro e l'elenco degli agenti con stato e modello.",
   "author": { "name": "Maurizio Pelizzone" },
   "types": "./types/index.d.ts",

@@ -11,7 +11,7 @@ Mod per Claude Code che apre un pannello a lato del transcript, diviso in due se
     della sessione sulla cartella padre (alla radice di un'unità non fa nulla e lo segnala), `↻` rilegge le
     cartelle aperte, che si riallineano da sole anche a fine turno.
   - Un clic sul nome di una cartella la apre o la chiude. Dopo il nome ogni cartella ha due pulsanti:
-    `↗` apre Esplora risorse su quella cartella (solo Windows; se non riesce compare un avviso con il motivo),
+    `↗` apre Esplora risorse su quella cartella (solo Windows; compare un avviso di conferma e, se non riesce, uno con il motivo),
     `→` ne fa la cartella di lavoro della sessione. Il doppio clic non esiste più.
   - Un clic su un file inserisce `@percorso` nel prompt, alla posizione del cursore.
   - `↑` e `→` usano il comando integrato `/cd`. Anche un `/cd` digitato a mano viene riconosciuto (entro un

@@ -369,10 +369,25 @@ const toggle = async ($: EngineInterface, path: string, windowRows: number) => {
 // Motivo di un errore, su una riga e troncato, per i toast
 const reasonOf = (error: unknown) => fit(String(error instanceof Error ? error.message : error).replace(/\s+/g, ' '), 60)
 
-// Apre Esplora risorse sulla cartella (solo Windows); explorer.exe risponde 1 anche quando apre, quindi l'exit code si ignora
+// Apre Esplora risorse sulla cartella (solo Windows) con `cmd /c start`: risponde 0 se riesce e porta la finestra in primo piano
+// (il primo valore dopo `start` è il titolo della finestra, che `start` richiede: resta un elemento distinto di argv, vuoto)
 const openInExplorer = async ($: EngineInterface, path: string) => {
   try {
-    await $.process.run(['explorer.exe', absolutePath(await read($, cwdState), path)])
+    // Se lo stato non è ancora stato letto usa la cartella di lavoro della sessione
+    const cwd = (await read($, cwdState)) || (await $.session.cwd())
+
+    // Percorso con soli `\` e senza `\` finale (tranne una radice come C:\)
+    const target = absolutePath(cwd, path).replace(/\//g, '\\').replace(/(?<!:)\\+$/, '')
+
+    // Conferma visibile che la pressione è arrivata al gestore
+    $.ui.toast(`Apro Esplora risorse: ${target}`)
+    const { exitCode, stderr } = await $.process.run(['cmd.exe', '/c', 'start', '', target])
+
+    // Exit code diverso da 0: il toast dice il codice e l'inizio dell'errore, su una riga
+    if (exitCode !== 0) {
+      const detail = fit(stderr.replace(/\s+/g, ' ').trim(), 120)
+      $.ui.toast(`Impossibile aprire Esplora risorse (codice ${exitCode})${detail ? `: ${detail}` : ''}`)
+    }
   } catch (error) {
     // Chiamata rifiutata o comando non avviabile (per esempio fuori da Windows): il toast dice anche il motivo
     $.ui.toast(`Impossibile aprire Esplora risorse: ${reasonOf(error)}`)

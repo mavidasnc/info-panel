@@ -407,14 +407,14 @@ test('la rotella sull albero lo scorre da sé, fuori dall albero lascia fare al 
   expect(onAgents.deny).toBeUndefined()
 })
 
-// Il motore sotto process.run e ui.toast: registra gli avvii e i toast; process.run risponde 1, come explorer.exe quando apre
-const explorer = (on: On, deny?: string) => {
+// Il motore sotto process.run e ui.toast: registra gli avvii e i toast; process.run risponde 0 (come `cmd /c start` quando riesce), o con `exitCode` e `stderr` indicati
+const explorer = (on: On, deny?: string, exitCode = 0, stderr = '') => {
   const runs: (readonly string[])[] = []
   const toasts: string[] = []
   on('process.run', (_$, e) => {
     runs.push(e.argv)
 
-    return deny ? { deny } : { value: { exitCode: 1, stdout: '', stderr: '' } as never }
+    return deny ? { deny } : { value: { exitCode, stdout: '', stderr } as never }
   })
   on('ui.toast', (_$, e) => {
     toasts.push(e.text)
@@ -445,10 +445,76 @@ test('il pulsante ↗ apre Esplora risorse sulla cartella senza cambiarne lo sta
   const ui = await $.ui.mount({ plugin: 'info-panel', surface: 'terminal', component: 'Pane', requestId: 'info-panel', props: props(20) })
   await ui.press({ key: 'open:src' })
 
-  // Percorso Windows assoluto: cwd + \ + cartella; la cartella resta chiusa e nessun errore
-  expect(runs).toEqual([['explorer.exe', 'C:\\Users\\maurizio\\Claude\\mio-progetto\\src']])
-  expect(toasts).toEqual([])
+  // Percorso Windows assoluto: cwd + \ + cartella; la cartella resta chiusa e c'è solo il toast di conferma
+  expect(runs).toEqual([['cmd.exe', '/c', 'start', '', 'C:\\Users\\maurizio\\Claude\\mio-progetto\\src']])
+  expect(toasts).toEqual(['Apro Esplora risorse: C:\\Users\\maurizio\\Claude\\mio-progetto\\src'])
   expect(await ui.find({ text: 'index.ts' })).toBeUndefined()
+})
+
+test('un percorso con spazi resta un solo elemento di argv', async ($, on) => {
+  const { dir } = world(on)
+  dir.value = 'C:\\Users\\maurizio rossi\\Mio Progetto'
+  const { runs } = explorer(on)
+  await $.session.start(START)
+
+  const ui = await $.ui.mount({ plugin: 'info-panel', surface: 'terminal', component: 'Pane', requestId: 'info-panel', props: props(20) })
+  await ui.press({ key: 'open:src' })
+
+  // Titolo vuoto e percorso intero: due elementi distinti, nessuna virgoletta aggiunta
+  expect(runs).toEqual([['cmd.exe', '/c', 'start', '', 'C:\\Users\\maurizio rossi\\Mio Progetto\\src']])
+})
+
+test('con lo stato cwd vuoto il percorso parte da $.session.cwd()', async ($, on) => {
+  const { dir } = world(on)
+  const { runs } = explorer(on)
+  // All'avvio la sessione non ha ancora una cartella: lo stato `cwd` resta vuoto
+  dir.value = ''
+  await $.session.start(START)
+
+  const ui = await $.ui.mount({ plugin: 'info-panel', surface: 'terminal', component: 'Pane', requestId: 'info-panel', props: props(20) })
+  // Poi la cartella c'è, ma il timer (orologio finto, mai avanzato) non ha ancora aggiornato lo stato
+  dir.value = 'C:\\Users\\maurizio\\Claude\\mio-progetto'
+  await ui.press({ key: 'open:src' })
+
+  expect(runs).toEqual([['cmd.exe', '/c', 'start', '', 'C:\\Users\\maurizio\\Claude\\mio-progetto\\src']])
+})
+
+test('il percorso ha solo \\ e nessun \\ finale, tranne una radice come C:\\', async ($, on) => {
+  const { dir } = world(on)
+  // Cartella di lavoro con separatori `/` e `/` finale
+  dir.value = 'C:/Users/maurizio/progetto/'
+  const { runs } = explorer(on)
+  await $.session.start(START)
+
+  const ui = await $.ui.mount({ plugin: 'info-panel', surface: 'terminal', component: 'Pane', requestId: 'info-panel', props: props(20) })
+  await ui.press({ key: 'open:src' })
+
+  expect(runs).toEqual([['cmd.exe', '/c', 'start', '', 'C:\\Users\\maurizio\\progetto\\src']])
+})
+
+test('se Esplora risorse risponde con un exit code diverso da 0 il toast dice codice ed errore', async ($, on) => {
+  world(on)
+  const { toasts } = explorer(on, undefined, 1, 'Impossibile trovare il percorso specificato.')
+  await $.session.start(START)
+
+  const ui = await $.ui.mount({ plugin: 'info-panel', surface: 'terminal', component: 'Pane', requestId: 'info-panel', props: props(20) })
+  await ui.press({ key: 'open:src' })
+
+  expect(toasts).toEqual([
+    'Apro Esplora risorse: C:\\Users\\maurizio\\Claude\\mio-progetto\\src',
+    'Impossibile aprire Esplora risorse (codice 1): Impossibile trovare il percorso specificato.',
+  ])
+})
+
+test('lo stderr nel toast d errore è troncato a circa 120 caratteri', async ($, on) => {
+  world(on)
+  const { toasts } = explorer(on, undefined, 1, 'x'.repeat(300))
+  await $.session.start(START)
+
+  const ui = await $.ui.mount({ plugin: 'info-panel', surface: 'terminal', component: 'Pane', requestId: 'info-panel', props: props(20) })
+  await ui.press({ key: 'open:src' })
+
+  expect(toasts[1]).toBe(`Impossibile aprire Esplora risorse (codice 1): ${'x'.repeat(119)}…`)
 })
 
 test('se Esplora risorse non si può aprire il toast dice anche il motivo', async ($, on) => {
@@ -459,8 +525,10 @@ test('se Esplora risorse non si può aprire il toast dice anche il motivo', asyn
   const ui = await $.ui.mount({ plugin: 'info-panel', surface: 'terminal', component: 'Pane', requestId: 'info-panel', props: props(20) })
   await ui.press({ key: 'open:src' })
 
-  expect(toasts.length).toBe(1)
-  expect(toasts[0]).toMatch(/^Impossibile aprire Esplora risorse: .*comandi non consentiti/)
+  // Prima il toast di conferma, poi quello d'errore col motivo
+  expect(toasts.length).toBe(2)
+  expect(toasts[0]).toMatch(/^Apro Esplora risorse: /)
+  expect(toasts[1]).toMatch(/^Impossibile aprire Esplora risorse: .*comandi non consentiti/)
 })
 
 test('il pulsante → lancia /cd sul percorso assoluto della cartella', async ($, on) => {
@@ -543,7 +611,7 @@ test('un cambio di cartella di lavoro (/cd) azzera l albero e rilegge la radice'
 
   // Le azioni ora lavorano sulla nuova cartella
   await ui.press({ key: 'open:src' })
-  expect(runs).toEqual([['explorer.exe', 'C:\\Users\\maurizio\\Claude\\altro-progetto\\src']])
+  expect(runs).toEqual([['cmd.exe', '/c', 'start', '', 'C:\\Users\\maurizio\\Claude\\altro-progetto\\src']])
 })
 
 test('un clic su un file inserisce @percorso nel prompt', async ($, on) => {

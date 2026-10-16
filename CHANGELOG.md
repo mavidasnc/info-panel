@@ -2,6 +2,12 @@
 
 Formato basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/).
 
+## [0.3.1] - 2026-10-16
+
+### Corretto
+- Esplora risorse non si apriva: `explorer.exe` lanciato direttamente non dava alcun segnale. Il pulsante `↗` ora mostra un toast di conferma («Apro Esplora risorse: percorso») e apre la cartella con `cmd /c start`; se l'exit code non è 0 il toast d'errore riporta il codice e l'inizio dell'errore.
+- Il percorso passato a Esplora risorse usa sempre `\` e non ha il `\` finale; se lo stato `cwd` è ancora vuoto parte da `$.session.cwd()`.
+
 ## [0.3.0] - 2026-10-16
 
 ### Aggiunto
