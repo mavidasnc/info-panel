@@ -23,6 +23,8 @@ declare module 'claude-code' {
       frame: number
       // Nome della cartella di lavoro, per l'intestazione
       rootName: string
+      // Percorso assoluto della cartella di lavoro, per accorgersi di un /cd
+      cwd: string
     }
   }
 }

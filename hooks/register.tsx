@@ -16,21 +16,84 @@ const SPINNER = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', 
 // Stati in cui un agente sta lavorando (spinner animato)
 const ACTIVE = ['running', 'pending', 'waiting']
 
-// Tempo massimo (in ms) tra due clic sulla stessa cartella perché contino come doppio clic
-const DOUBLE_PRESS_MS = 400
+// Set di icone selezionabili con l'opzione `icons`: emoji (nessun font), nerd (serve un Nerd Font), simple (simboli Unicode colorati)
+export type IconSet = 'emoji' | 'nerd' | 'simple'
 
-// Icona di una voce dell'albero: glifo Nerd Font e colore (hex, perché i colori di tema non coprono queste tinte)
-export type Icon = { glyph: string; color: string }
+// Icona di una voce dell'albero: glifo, larghezza in colonne del terminale e colore (hex, perché i colori di tema non coprono queste tinte; le emoji non hanno colore)
+export type Icon = { glyph: string; width: number; color?: string }
+
+// Glifo e colore di una voce del set nerd: la larghezza (1) la aggiunge iconFor
+type NerdIcon = { glyph: string; color: string }
 
 // Cartelle: gialle, aperte o chiuse
-const FOLDER: Icon = { glyph: '\u{e5ff}', color: '#e5c07b' } // nf-custom-folder
-const FOLDER_OPEN: Icon = { glyph: '\u{e5fe}', color: '#e5c07b' } // nf-custom-folder_open
+const FOLDER: NerdIcon = { glyph: '\u{e5ff}', color: '#e5c07b' } // nf-custom-folder
+const FOLDER_OPEN: NerdIcon = { glyph: '\u{e5fe}', color: '#e5c07b' } // nf-custom-folder_open
 
 // File senza una voce più precisa
-const FILE: Icon = { glyph: '\u{f016}', color: '#7f848e' } // nf-fa-file_o
+const FILE: NerdIcon = { glyph: '\u{f016}', color: '#7f848e' } // nf-fa-file_o
 
-// Icone dei file: prima si cerca per nome esatto (minuscolo), poi per estensione (minuscola, con il punto)
-const ICONS: Record<string, Icon> = {
+// Set simple: cartelle gialle (chiusa ▪, aperta ▫) e file ●, che prende il colore della famiglia dal set nerd
+const SIMPLE_FOLDER = '▪'
+const SIMPLE_FOLDER_OPEN = '▫'
+const SIMPLE_FILE = '●'
+
+// Set emoji: ogni glifo è un solo code point >= U+1F300 con Emoji_Presentation=Yes (niente variation selector),
+// così il terminale lo disegna sempre largo 2 colonne
+const EMOJI_FOLDER = '📁'
+const EMOJI_FOLDER_OPEN = '📂'
+const EMOJI_FILE = '📄'
+
+// Emoji dei file: prima per nome esatto (minuscolo), poi per estensione (minuscola, con il punto)
+export const EMOJIS: Record<string, string> = {
+  // Nomi esatti (.env.local, .env.production... usano la voce di .env)
+  'package.json': '📦',
+  dockerfile: '🐳',
+  '.gitignore': '🙈',
+  '.gitattributes': '🙈',
+  '.env': '🔧',
+  // Estensioni
+  '.php': '🐘',
+  '.js': '🟨',
+  '.mjs': '🟨',
+  '.cjs': '🟨',
+  '.ts': '🟦',
+  '.tsx': '🔵',
+  '.jsx': '🔵',
+  '.json': '📋',
+  '.md': '📝',
+  '.html': '🌐',
+  '.css': '🎨',
+  '.scss': '🎨',
+  '.sass': '🎨',
+  '.py': '🐍',
+  '.yml': '🔧',
+  '.yaml': '🔧',
+  '.toml': '🔧',
+  '.ini': '🔧',
+  '.conf': '🔧',
+  '.png': '📷',
+  '.jpg': '📷',
+  '.jpeg': '📷',
+  '.gif': '📷',
+  '.webp': '📷',
+  '.ico': '📷',
+  '.svg': '📐',
+  '.sh': '💻',
+  '.bash': '💻',
+  '.ps1': '💻',
+  '.zip': '🧳',
+  '.gz': '🧳',
+  '.tar': '🧳',
+  '.7z': '🧳',
+  '.pdf': '📕',
+  '.txt': '📃',
+  '.log': '📃',
+  '.sql': '💾',
+  '.lock': '🔒',
+}
+
+// Icone dei file del set nerd: prima si cerca per nome esatto (minuscolo), poi per estensione (minuscola, con il punto)
+const ICONS: Record<string, NerdIcon> = {
   // Nomi esatti (.env.local, .env.production... usano la voce di .env)
   'package.json': { glyph: '\u{e616}', color: '#cb3837' }, // nf-seti-npm
   'composer.json': { glyph: '\u{e783}', color: '#c0864b' }, // nf-dev-composer
@@ -103,8 +166,8 @@ const frame = atom({ plugin: 'info-panel', key: 'frame' } as const, 0)
 // Nome della cartella di lavoro, per l'intestazione
 const rootName = atom({ plugin: 'info-panel', key: 'rootName' } as const, '')
 
-// Ultimo clic su una cartella (percorso e istante); si perde al reload, serve solo a riconoscere il doppio clic
-let lastPress: { path: string; at: number } | undefined
+// Percorso assoluto della cartella di lavoro: il timer lo confronta con $.session.cwd() per accorgersi di un /cd
+const cwdState = atom({ plugin: 'info-panel', key: 'cwd' } as const, '')
 
 // Una riga dell'albero già "appiattita": profondità, stato aperto e guide ad albero servono al disegno
 export type TreeRow = { path: string; name: string; kind: TreeEntry['kind']; depth: number; isOpen: boolean; prefix: string }
@@ -183,11 +246,8 @@ export const clip = <T,>(items: readonly T[], lines: number) => {
   return { shown, hidden: lines >= 2 ? items.length - shown.length : 0 }
 }
 
-// Icona di una voce dell'albero: cartelle gialle (aperta o chiusa), file per nome esatto, poi per estensione, altrimenti quella di default
-export const iconFor = (name: string, kind: TreeEntry['kind'], isOpen: boolean): Icon => {
-  if (kind === 'dir') {
-    return isOpen ? FOLDER_OPEN : FOLDER
-  }
+// Voce di una tabella per un file: prima per nome esatto, poi per estensione; undefined se non c'è
+const lookup = <T,>(table: Record<string, T>, name: string): T | undefined => {
   // Nome minuscolo; tutti i .env.* (local, production...) condividono la voce di .env
   const lower = name.toLowerCase()
   const byName = lower.startsWith('.env.') ? '.env' : lower
@@ -197,17 +257,62 @@ export const iconFor = (name: string, kind: TreeEntry['kind'], isOpen: boolean):
 
   // Object.hasOwn evita che nomi come "constructor" peschino dal prototipo
   for (const key of [byName, byExtension]) {
-    if (Object.hasOwn(ICONS, key)) {
-      return ICONS[key] ?? FILE
+    if (Object.hasOwn(table, key)) {
+      return table[key]
     }
   }
 
-  return FILE
+  return undefined
 }
 
-// Doppio clic: stessa cartella dell'ultimo clic, a non più di 400 ms di distanza
-export const isDoublePress = (last: { path: string; at: number } | undefined, path: string, now: number) =>
-  last !== undefined && last.path === path && now - last.at <= DOUBLE_PRESS_MS
+// Icona di una voce dell'albero nel set scelto (un valore sconosciuto vale emoji): cartelle aperte o chiuse, file per nome esatto, poi per estensione, altrimenti quella di default
+export const iconFor = (name: string, kind: TreeEntry['kind'], isOpen: boolean, set: string): Icon => {
+  if (set === 'nerd') {
+    const nerd = kind === 'dir' ? (isOpen ? FOLDER_OPEN : FOLDER) : (lookup(ICONS, name) ?? FILE)
+
+    return { ...nerd, width: 1 }
+  }
+
+  if (set === 'simple') {
+    if (kind === 'dir') {
+      return { glyph: isOpen ? SIMPLE_FOLDER_OPEN : SIMPLE_FOLDER, width: 1, color: FOLDER.color }
+    }
+
+    return { glyph: SIMPLE_FILE, width: 1, color: (lookup(ICONS, name) ?? FILE).color }
+  }
+
+  // Emoji: larghe 2 colonne, il colore del terminale non si applica
+  if (kind === 'dir') {
+    return { glyph: isOpen ? EMOJI_FOLDER_OPEN : EMOJI_FOLDER, width: 2 }
+  }
+
+  return { glyph: lookup(EMOJIS, name) ?? EMOJI_FILE, width: 2 }
+}
+
+// Percorso assoluto di una cartella dell'albero: cwd + separatore + percorso relativo, con il separatore della cwd (\ su Windows)
+export const absolutePath = (cwd: string, path: string) => {
+  const sep = cwd.includes('\\') ? '\\' : '/'
+
+  // La cwd può finire con un separatore (radice di un'unità): non lo si raddoppia
+  return `${cwd.replace(/[\\/]+$/, '')}${sep}${path.split('/').join(sep)}`
+}
+
+// Cartella padre di `cwd` (gestisce \ e /); undefined se è già la radice di un'unità (C:\) o di / e non si può salire
+export const parentDir = (cwd: string): string | undefined => {
+  // Senza separatori finali: C:\a\ diventa C:\a, la radice C:\ diventa C: e / diventa vuoto
+  const trimmed = cwd.replace(/[\\/]+$/, '')
+  const cut = Math.max(trimmed.lastIndexOf('\\'), trimmed.lastIndexOf('/'))
+
+  // Nessun separatore rimasto: si era già alla radice
+  if (cut < 0) {
+    return undefined
+  }
+
+  const parent = trimmed.slice(0, cut)
+
+  // La radice resta col suo separatore: C:\ e /
+  return parent === '' || parent.endsWith(':') ? `${parent}${trimmed.charAt(cut)}` : parent
+}
 
 // Un agente lavora quando il suo stato è running, pending o waiting
 const isActive = (status: string) => ACTIVE.includes(status)
@@ -261,31 +366,57 @@ const toggle = async ($: EngineInterface, path: string, windowRows: number) => {
   await update($, treeOffset, offset => Math.min(offset, Math.max(0, rows.length - windowRows)))
 }
 
+// Motivo di un errore, su una riga e troncato, per i toast
+const reasonOf = (error: unknown) => fit(String(error instanceof Error ? error.message : error).replace(/\s+/g, ' '), 60)
+
 // Apre Esplora risorse sulla cartella (solo Windows); explorer.exe risponde 1 anche quando apre, quindi l'exit code si ignora
 const openInExplorer = async ($: EngineInterface, path: string) => {
   try {
-    const cwd = await $.session.cwd()
-    await $.process.run(['explorer.exe', `${cwd}\\${path.split('/').join('\\')}`])
-  } catch {
-    // Chiamata rifiutata o comando non avviabile (per esempio fuori da Windows)
-    $.ui.toast('Impossibile aprire Esplora risorse')
+    await $.process.run(['explorer.exe', absolutePath(await read($, cwdState), path)])
+  } catch (error) {
+    // Chiamata rifiutata o comando non avviabile (per esempio fuori da Windows): il toast dice anche il motivo
+    $.ui.toast(`Impossibile aprire Esplora risorse: ${reasonOf(error)}`)
   }
 }
 
-// Clic su una cartella: apre o chiude subito; il secondo clic entro 400 ms la riporta com'era e apre Esplora risorse
-const pressFolder = async ($: EngineInterface, path: string, windowRows: number) => {
-  const now = await $.clock.now()
+// Sposta la cartella di lavoro della sessione con il comando integrato /cd (il percorso va senza virgolette)
+const changeDir = async ($: EngineInterface, target: string) => {
+  try {
+    await $.command.run({ command: 'cd', args: target })
+  } catch (error) {
+    // Comando rifiutato o percorso non valido
+    $.ui.toast(`Impossibile cambiare cartella: ${reasonOf(error)}`)
+  }
+}
 
-  if (isDoublePress(lastPress, path, now)) {
-    lastPress = undefined
-    await toggle($, path, windowRows)
-    await openInExplorer($, path)
+// Sale alla cartella padre della cartella di lavoro; alla radice di un'unità non fa nulla e lo dice
+const goToParent = async ($: EngineInterface) => {
+  const parent = parentDir(await read($, cwdState))
+
+  if (parent === undefined) {
+    $.ui.toast('Già alla radice: non c\'è una cartella padre')
 
     return
   }
 
-  lastPress = { path, at: now }
-  await toggle($, path, windowRows)
+  await changeDir($, parent)
+}
+
+// Se la cartella di lavoro è cambiata (un /cd, anche digitato a mano) riparte da zero: albero chiuso, in cima, radice riletta
+const syncCwd = async ($: EngineInterface) => {
+  const now = await $.session.cwd()
+
+  if (now === (await read($, cwdState))) {
+    return
+  }
+
+  // Prima il nuovo valore, così un secondo giro del timer non rifà la stessa cosa
+  await update($, cwdState, () => now)
+  await update($, expanded, () => [])
+  await update($, listings, () => ({}))
+  await update($, treeOffset, () => 0)
+  await update($, rootName, () => folderName(now))
+  await loadListings($, [''])
 }
 
 // Clic su un file: inserisce @percorso (con uno spazio dopo) nel prompt, alla posizione del cursore
@@ -302,12 +433,12 @@ const viewAgent = async ($: EngineInterface, id: string) => {
   }
 }
 
-export const register: Register = on => {
+export const register: Register = (on, options) => {
+  // Set di icone scelto nelle opzioni del mod (un valore sconosciuto vale emoji, lo gestisce iconFor)
+  const iconSet = String(options.icons ?? 'emoji')
+
   // All'avvio (e dopo ogni reload) registra il comando, carica la radice, apre il pane e avvia i timer
   on('session.start', async ($, e, next) => {
-    // Nessun clic precedente: un doppio clic non può nascere da una sessione passata
-    lastPress = undefined
-
     await $.command.register({
       name: 'info-panel',
       description: 'Apre il pannello con l\'albero della cartella e gli agenti',
@@ -317,6 +448,7 @@ export const register: Register = on => {
     // Nome della cartella di lavoro, radice dell'albero e modello dell'agente principale
     const cwd = await $.session.cwd()
     const model = await $.session.model()
+    await update($, cwdState, () => cwd)
     await update($, rootName, () => folderName(cwd))
     await update($, models, current => ({ ...current, main: model }))
     await loadListings($, [''])
@@ -338,6 +470,9 @@ export const register: Register = on => {
         await update($, agents, () => rows)
       }
     })
+
+    // Ogni secondo controlla se la cartella di lavoro è cambiata (/cd)
+    $.clock.every(1000, () => syncCwd($))
 
     // Ogni 200 ms fa avanzare lo spinner, ma solo se qualcuno sta lavorando
     $.clock.every(200, async () => {
@@ -448,21 +583,29 @@ export const register: Register = on => {
     return (
       <Box flexDirection="column" padding={1}>
         <Box flexDirection="row">
-          <Text weight="bold">{fit(`${name}/`, cols - 2)}</Text>
+          <Text weight="bold">{fit(`${name}/`, cols - 4)}</Text>
           <Text> </Text>
-          <Button key="refresh" plain onPress={() => loadListings($, ['', ...open])}>
+          <Button key="parent" plain dimColor onPress={() => goToParent($)}>
+            ↑
+          </Button>
+          <Text> </Text>
+          <Button key="refresh" plain dimColor onPress={() => loadListings($, ['', ...open])}>
             ↻
           </Button>
         </Box>
         {visible.map(row => {
-          const icon = iconFor(row.name, row.kind, row.isOpen)
+          const icon = iconFor(row.name, row.kind, row.isOpen, iconSet)
           // Se le guide non ci stanno si perdono quelle a sinistra e resta la coda col connettore (├─ o └─), con 1 colonna per il nome
-          const room = Math.max(0, cols - 3)
+          const room = Math.max(0, cols - icon.width - 2)
           const guides = row.prefix.length > room ? row.prefix.slice(row.prefix.length - room) : row.prefix
-          // Il nome lascia posto alle guide, al glifo e allo spazio che lo segue; le cartelle hanno la / finale
-          const label = fit(row.kind === 'dir' ? `${row.name}/` : row.name, cols - guides.length - 2)
+          // Spazio per il nome: dopo guide, icona e spazio che la segue
+          const nameRoom = cols - guides.length - icon.width - 1
+          // Le azioni ↗ e → (con i due spazi che le separano: 4 colonne) compaiono solo se al nome resta almeno 1 colonna
+          const hasActions = row.kind === 'dir' && nameRoom - 4 >= 1
+          // Le cartelle hanno la / finale
+          const label = fit(row.kind === 'dir' ? `${row.name}/` : row.name, hasActions ? nameRoom - 4 : nameRoom)
 
-          // Guide ad albero in grigio, icona colorata, poi il nome
+          // Guide ad albero in grigio, icona (colorata, se il set ha i colori), poi il nome
           const line = [
             <Text dimColor>{guides}</Text>,
             <Text color={icon.color}>{icon.glyph}</Text>,
@@ -474,11 +617,37 @@ export const register: Register = on => {
             return <Text>{line}</Text>
           }
 
-          return row.kind === 'dir' ? (
-            <Button key={`dir:${row.path}`} plain onPress={() => pressFolder($, row.path, windowRows)}>
-              {line}
-            </Button>
-          ) : (
+          // Cartella: il nome apre o chiude, poi ↗ apre Esplora risorse e → ne fa la cartella di lavoro
+          if (row.kind === 'dir') {
+            const actions = hasActions
+              ? [
+                  <Text> </Text>,
+                  <Button key={`open:${row.path}`} plain dimColor onPress={() => openInExplorer($, row.path)}>
+                    ↗
+                  </Button>,
+                  <Text> </Text>,
+                  <Button
+                    key={`cd:${row.path}`}
+                    plain
+                    dimColor
+                    onPress={async () => changeDir($, absolutePath(await read($, cwdState), row.path))}
+                  >
+                    →
+                  </Button>,
+                ]
+              : []
+
+            return (
+              <Box key={`row:${row.path}`} flexDirection="row">
+                <Button key={`dir:${row.path}`} plain onPress={() => toggle($, row.path, windowRows)}>
+                  {line}
+                </Button>
+                {actions}
+              </Box>
+            )
+          }
+
+          return (
             <Button key={`file:${row.path}`} plain onPress={() => mentionFile($, row.path)}>
               {line}
             </Button>

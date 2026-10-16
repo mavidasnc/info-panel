@@ -2,6 +2,24 @@
 
 Formato basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/).
 
+## [0.3.0] - 2026-10-16
+
+### Aggiunto
+- Opzione `icons` con tre set: `emoji` (predefinito, nessun font da installare), `nerd` (la tabella della 0.2.0) e `simple` (simboli Unicode colorati: `▪`/`▫` per le cartelle, `●` per i file). Un valore sconosciuto vale `emoji`.
+- Pulsante `↗` su ogni riga cartella: apre Esplora risorse sulla cartella (solo Windows; il toast di errore ora dice anche il motivo).
+- Pulsante `→` su ogni riga cartella: imposta la cartella come cartella di lavoro della sessione con il comando integrato `/cd`.
+- Pulsante `↑` nell'intestazione: sposta la cartella di lavoro sulla cartella padre; alla radice di un'unità non fa nulla e lo segnala.
+- Sincronizzazione con la cartella di lavoro: ogni secondo il mod controlla se è cambiata (anche con un `/cd` digitato a mano) e in tal caso chiude l'albero, lo riporta in cima e rilegge la radice.
+- Valore di stato `cwd` nel contratto dei tipi.
+
+### Modificato
+- Le icone hanno una larghezza in colonne (2 per le emoji, 1 per gli altri set) che entra nel calcolo dei troncamenti: nessuna riga supera la larghezza utile, anche con i tre pulsanti sulle cartelle. Sulle righe troppo strette le azioni `↗` e `→` si nascondono.
+- I pulsanti dell'intestazione sono in grigio attenuato.
+- Il Nerd Font non è più un requisito (resta come opzione `nerd`).
+
+### Rimosso
+- Il doppio clic su una cartella: il motore assorbe con ogni probabilità il secondo clic, quindi non era affidabile; lo sostituisce il pulsante `↗`.
+
 ## [0.2.0] - 2026-10-16
 
 ### Aggiunto

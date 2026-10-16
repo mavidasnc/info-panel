@@ -1,7 +1,7 @@
 import { expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
-import { clip, fit, flatten, iconFor, isDoublePress, shortModel, sortAndFilter, split } from './register'
+import { absolutePath, clip, EMOJIS, fit, flatten, iconFor, parentDir, shortModel, sortAndFilter, split } from './register'
 
 // Input di session.start come lo passa il REPL
 const START = { cwd: '', surface: 'terminal', isInteractive: true } as never
@@ -22,13 +22,14 @@ const FOLDERS: Record<string, { name: string; kind: string }[]> = {
   src: [{ name: 'index.ts', kind: 'file' }],
 }
 
-// Il motore sotto il mod: cartella, modello, comando, pane, cartelle e agenti finti; restituisce l'orologio finto e le cartelle lette
+// Il motore sotto il mod: cartella, modello, comando, pane, cartelle e agenti finti; restituisce l'orologio finto, le cartelle lette e la cartella di lavoro (modificabile)
 const world = (on: On, agents: unknown[] = []) => {
   const clock = mock.clock(on)
   const listed: string[] = []
+  const dir = { value: 'C:\\Users\\maurizio\\Claude\\mio-progetto' }
 
   on('session.start', () => ({ cwd: '' }))
-  on('session.cwd', () => ({ value: 'C:\\Users\\maurizio\\Claude\\mio-progetto' }))
+  on('session.cwd', () => ({ value: dir.value }))
   on('session.model', () => ({ value: 'claude-sonnet-5-5' }))
   on('command.register', () => ({ value: { command: 'info-panel' } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
@@ -48,7 +49,7 @@ const world = (on: On, agents: unknown[] = []) => {
     return { turnId: e.turnId, index: e.index, answer: '', toolUses: [] } as never
   })
 
-  return { clock, listed }
+  return { clock, listed, dir }
 }
 
 // Righe di primo livello del pane: tutto ciò che il motore deve disegnare una per riga
@@ -56,6 +57,21 @@ const rowsOf = async (ui: { drawn: () => Promise<unknown> }) => {
   const root = (await ui.drawn()) as { children: unknown[] }
 
   return root.children
+}
+
+// Colonne occupate da un testo nel terminale: le emoji (code point >= U+1F300) ne occupano 2, il resto 1
+const columns = (text: string) => [...text].reduce((sum, char) => sum + ((char.codePointAt(0) ?? 0) >= 0x1f300 ? 2 : 1), 0)
+
+// Nodo disegnato dal motore: Button con `label`, altrimenti testo o contenitore con figli
+type Node = string | { type: string; props?: { key?: string; label?: string }; children?: Node[] }
+
+// Larghezza in colonne di una riga: somma di pulsanti (label), testi e contenitori affiancati
+const widthOf = (node: Node): number => {
+  if (typeof node === 'string') {
+    return columns(node)
+  }
+
+  return node.type === 'Button' ? columns(node.props?.label ?? '') : (node.children ?? []).reduce((sum, child) => sum + widthOf(child), 0)
 }
 
 test('sortAndFilter nasconde .git e node_modules e mette le cartelle prima', async () => {
@@ -114,36 +130,80 @@ test('split dà circa l 80% all albero e il resto agli agenti', async () => {
   expect(split(4).treeRows + split(4).agentRows).toBe(4)
 })
 
-test('iconFor: cartelle gialle, file per nome e per estensione, default per il resto', async () => {
-  // Cartelle: stesso giallo, glifo diverso se aperta o chiusa
-  expect(iconFor('src', 'dir', false)).toEqual({ glyph: '\u{e5ff}', color: '#e5c07b' })
-  expect(iconFor('src', 'dir', true)).toEqual({ glyph: '\u{e5fe}', color: '#e5c07b' })
+test('iconFor nerd: cartelle gialle, file per nome e per estensione, default per il resto', async () => {
+  // Cartelle: stesso giallo, glifo diverso se aperta o chiusa; una colonna di larghezza
+  expect(iconFor('src', 'dir', false, 'nerd')).toEqual({ glyph: '\u{e5ff}', color: '#e5c07b', width: 1 })
+  expect(iconFor('src', 'dir', true, 'nerd')).toEqual({ glyph: '\u{e5fe}', color: '#e5c07b', width: 1 })
   // Per estensione, senza distinguere le maiuscole
-  expect(iconFor('index.ts', 'file', false).glyph).toBe('\u{e628}')
-  expect(iconFor('Main.PHP', 'file', false).glyph).toBe('\u{e608}')
+  expect(iconFor('index.ts', 'file', false, 'nerd').glyph).toBe('\u{e628}')
+  expect(iconFor('Main.PHP', 'file', false, 'nerd').glyph).toBe('\u{e608}')
   // Per nome esatto, prima dell'estensione: package.json non è un .json qualsiasi
-  expect(iconFor('package.json', 'file', false).glyph).toBe('\u{e616}')
-  expect(iconFor('data.json', 'file', false).glyph).toBe('\u{e60b}')
-  expect(iconFor('.env.local', 'file', false).glyph).toBe('\u{f084}')
-  expect(iconFor('Dockerfile', 'file', false).glyph).toBe('\u{e650}')
+  expect(iconFor('package.json', 'file', false, 'nerd').glyph).toBe('\u{e616}')
+  expect(iconFor('data.json', 'file', false, 'nerd').glyph).toBe('\u{e60b}')
+  expect(iconFor('.env.local', 'file', false, 'nerd').glyph).toBe('\u{f084}')
+  expect(iconFor('Dockerfile', 'file', false, 'nerd').glyph).toBe('\u{e650}')
   // Estensione sconosciuta, file senza estensione e nomi che coincidono con il prototipo: icona di default
-  const fallback = { glyph: '\u{f016}', color: '#7f848e' }
-  expect(iconFor('foto.xyz', 'file', false)).toEqual(fallback)
-  expect(iconFor('Makefile', 'file', false)).toEqual(fallback)
-  expect(iconFor('constructor', 'file', false)).toEqual(fallback)
+  const fallback = { glyph: '\u{f016}', color: '#7f848e', width: 1 }
+  expect(iconFor('foto.xyz', 'file', false, 'nerd')).toEqual(fallback)
+  expect(iconFor('Makefile', 'file', false, 'nerd')).toEqual(fallback)
+  expect(iconFor('constructor', 'file', false, 'nerd')).toEqual(fallback)
 })
 
-test('isDoublePress riconosce lo stesso percorso entro 400 ms', async () => {
-  const last = { path: 'src', at: 1000 }
+test('iconFor simple: cartelle gialle ▪/▫, file ● con il colore della famiglia', async () => {
+  expect(iconFor('src', 'dir', false, 'simple')).toEqual({ glyph: '▪', color: '#e5c07b', width: 1 })
+  expect(iconFor('src', 'dir', true, 'simple')).toEqual({ glyph: '▫', color: '#e5c07b', width: 1 })
+  // Stesso colore della tabella nerd (.ts blu, .php viola) e grigio di default
+  expect(iconFor('index.ts', 'file', false, 'simple')).toEqual({ glyph: '●', color: '#61afef', width: 1 })
+  expect(iconFor('Main.PHP', 'file', false, 'simple')).toEqual({ glyph: '●', color: '#a074c4', width: 1 })
+  expect(iconFor('package.json', 'file', false, 'simple').color).toBe('#cb3837')
+  expect(iconFor('foto.xyz', 'file', false, 'simple')).toEqual({ glyph: '●', color: '#7f848e', width: 1 })
+})
 
-  // Dentro la soglia
-  expect(isDoublePress(last, 'src', 1000)).toBe(true)
-  expect(isDoublePress(last, 'src', 1399)).toBe(true)
-  // Fuori dalla soglia
-  expect(isDoublePress(last, 'src', 1401)).toBe(false)
-  // Altro percorso o nessun clic precedente
-  expect(isDoublePress(last, 'docs', 1100)).toBe(false)
-  expect(isDoublePress(undefined, 'src', 1100)).toBe(false)
+test('iconFor emoji: larghe 2 colonne, un solo code point >= U+1F300 con Emoji_Presentation, senza colore', async () => {
+  expect(iconFor('src', 'dir', false, 'emoji')).toEqual({ glyph: '📁', width: 2 })
+  expect(iconFor('src', 'dir', true, 'emoji')).toEqual({ glyph: '📂', width: 2 })
+  expect(iconFor('index.ts', 'file', false, 'emoji')).toEqual({ glyph: '🟦', width: 2 })
+  expect(iconFor('Main.PHP', 'file', false, 'emoji').glyph).toBe('🐘')
+  // Per nome esatto prima dell'estensione, e .env.* usa la voce di .env
+  expect(iconFor('package.json', 'file', false, 'emoji').glyph).toBe('📦')
+  expect(iconFor('data.json', 'file', false, 'emoji').glyph).toBe('📋')
+  expect(iconFor('.env.local', 'file', false, 'emoji').glyph).toBe('🔧')
+  expect(iconFor('foto.xyz', 'file', false, 'emoji')).toEqual({ glyph: '📄', width: 2 })
+  expect(iconFor('constructor', 'file', false, 'emoji')).toEqual({ glyph: '📄', width: 2 })
+
+  // Ogni glifo del set (tabella, cartelle e file di default) rispetta la regola
+  const glyphs = [...Object.values(EMOJIS), '📁', '📂', '📄']
+  expect(glyphs.length).toBeGreaterThan(30)
+  for (const glyph of glyphs) {
+    // Un solo code point, dal piano delle emoji in su, a presentazione emoji e senza variation selector
+    expect([...glyph].length).toBe(1)
+    expect(glyph.codePointAt(0) ?? 0).toBeGreaterThanOrEqual(0x1f300)
+    expect(/^\p{Emoji_Presentation}$/u.test(glyph)).toBe(true)
+    expect(glyph).not.toMatch(/[\u{fe00}-\u{fe0f}]/u)
+  }
+})
+
+test('iconFor con un set sconosciuto usa le emoji', async () => {
+  expect(iconFor('src', 'dir', false, 'altro')).toEqual(iconFor('src', 'dir', false, 'emoji'))
+  expect(iconFor('index.ts', 'file', false, '')).toEqual(iconFor('index.ts', 'file', false, 'emoji'))
+})
+
+test('parentDir sale di un livello e si ferma alla radice', async () => {
+  expect(parentDir('C:\\a\\b')).toBe('C:\\a')
+  expect(parentDir('C:\\a')).toBe('C:\\')
+  expect(parentDir('C:\\')).toBeUndefined()
+  expect(parentDir('/home/x')).toBe('/home')
+  expect(parentDir('/home')).toBe('/')
+  expect(parentDir('/')).toBeUndefined()
+  // Un separatore finale non cambia il risultato
+  expect(parentDir('C:\\a\\b\\')).toBe('C:\\a')
+})
+
+test('absolutePath usa il separatore della cartella di lavoro', async () => {
+  expect(absolutePath('C:\\Users\\m\\prog', 'src/lib')).toBe('C:\\Users\\m\\prog\\src\\lib')
+  expect(absolutePath('/home/m/prog', 'src/lib')).toBe('/home/m/prog/src/lib')
+  // Alla radice di un'unità il separatore non si raddoppia
+  expect(absolutePath('C:\\', 'src')).toBe('C:\\src')
 })
 
 test('shortModel, fit e clip', async () => {
@@ -167,14 +227,18 @@ test('il pane mostra intestazione, cartelle e riga principale su ogni superficie
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ plugin: 'info-panel', surface, component: 'Pane', requestId: 'info-panel', props: props(20) })
 
-    // Intestazione con il nome della cartella e pulsante di aggiornamento
+    // Intestazione con il nome della cartella e pulsanti cartella padre e aggiornamento
     expect(await ui.find({ text: 'mio-progetto/' })).toBeDefined()
+    expect(await ui.find({ key: 'parent' })).toBeDefined()
     expect(await ui.find({ key: 'refresh' })).toBeDefined()
-    // Cartelle cliccabili, chiuse; .git e node_modules assenti
-    expect(await ui.find({ key: 'dir:src', text: new RegExp('├─ \u{e5ff} src/$') })).toBeDefined()
+    // Cartelle cliccabili, chiuse, con l'emoji del set predefinito e i due pulsanti d'azione; .git e node_modules assenti
+    expect(await ui.find({ key: 'dir:src', text: /├─ 📁 src\/$/ })).toBeDefined()
+    expect(await ui.find({ key: 'open:src' })).toBeDefined()
+    expect(await ui.find({ key: 'cd:src' })).toBeDefined()
     expect(await ui.find({ text: /node_modules|\.git/ })).toBeUndefined()
-    // File cliccabile con la guida dell'ultima voce e l'icona del tipo (.md)
-    expect(await ui.find({ key: 'file:README.md', text: new RegExp('└─ \u{e609} README\\.md$') })).toBeDefined()
+    // File cliccabile con la guida dell'ultima voce e l'emoji del tipo (.md); i file non hanno azioni
+    expect(await ui.find({ key: 'file:README.md', text: /└─ 📝 README\.md$/ })).toBeDefined()
+    expect(await ui.find({ key: 'open:README.md' })).toBeUndefined()
     // Sezione agenti: riga principale col modello senza prefisso
     expect(await ui.find({ text: /Agenti \(1\)/ })).toBeDefined()
     expect(await ui.find({ text: /principale.*sonnet-5-5/ })).toBeDefined()
@@ -189,21 +253,67 @@ test('le righe di albero e agenti restano entro la larghezza utile (colonne meno
   world(on)
   await $.session.start(START)
 
-  // Corpo di 8 colonne: 6 utili; src/index.ts (guide, glifo, spazio e nome) e la riga dell'agente principale ci starebbero solo in 14 e 23
+  // Corpo di 8 colonne: 6 utili; src/index.ts (guide, emoji, spazio e nome) e la riga dell'agente principale ci starebbero solo in 15 e 23
   const ui = await $.ui.mount({ plugin: 'info-panel', surface: 'terminal', component: 'Pane', requestId: 'info-panel', props: props(20, 8) })
   await ui.press({ key: 'dir:src' })
-  const rows = (await rowsOf(ui)) as { type: string; props?: { key?: string; label?: string } }[]
-  const lines = rows.filter(row => row.type === 'Button' && /^(dir|file|agent):/.test(row.props?.key ?? ''))
+  const rows = (await rowsOf(ui)) as Node[]
+  const lines = rows.filter(row => typeof row !== 'string' && /^(row|file|agent):/.test(row.props?.key ?? ''))
 
-  // Tre voci in radice, il figlio di src e l'agente principale
+  // Tre voci in radice (le cartelle sono righe `row:`), il figlio di src e l'agente principale
   expect(lines.length).toBe(5)
   for (const row of lines) {
-    expect((row.props?.label ?? '').length).toBeLessThanOrEqual(6)
+    expect(widthOf(row)).toBeLessThanOrEqual(6)
   }
 })
 
-test('un clic su una cartella la apre, un secondo (oltre i 400 ms) la chiude', async ($, on) => {
-  const { clock, listed } = world(on)
+// Un set per volta: la riga cartella con tre pulsanti, l'intestazione e i file restano entro bodyColumns - 2 a ogni larghezza
+for (const icons of ['emoji', 'nerd', 'simple']) {
+  test(`con il set ${icons} ogni riga sta in bodyColumns - 2, cartelle con tre pulsanti comprese`, { options: { icons } }, async ($, on) => {
+    world(on)
+    await $.session.start(START)
+
+    for (const bodyColumns of [8, 11, 12, 14, 18, 24, 40]) {
+      const ui = await $.ui.mount({ plugin: 'info-panel', surface: 'terminal', component: 'Pane', requestId: 'info-panel', props: props(20, bodyColumns) })
+      await ui.press({ key: 'dir:src' })
+
+      for (const row of (await rowsOf(ui)) as Node[]) {
+        expect(widthOf(row)).toBeLessThanOrEqual(bodyColumns - 2)
+      }
+      await ui.unmount()
+    }
+  })
+}
+
+// L'opzione `icons` decide il set con cui si disegna l'albero; un valore sconosciuto vale emoji
+for (const [icons, expected] of [['nerd', /├─ \u{e5ff} src\/$/u], ['simple', /├─ ▪ src\/$/u], ['xyz', /├─ 📁 src\/$/u]] as const) {
+  test(`l'opzione icons "${icons}" sceglie le icone dell'albero`, { options: { icons } }, async ($, on) => {
+    world(on)
+    await $.session.start(START)
+
+    const ui = await $.ui.mount({ plugin: 'info-panel', surface: 'terminal', component: 'Pane', requestId: 'info-panel', props: props(20) })
+    expect(await ui.find({ key: 'dir:src', text: expected })).toBeDefined()
+  })
+}
+
+test('la riga cartella ha tre pulsanti con chiavi distinte e occupa tutta la larghezza con nome troncato', async ($, on) => {
+  world(on)
+  await $.session.start(START)
+
+  // 18 colonne utili: guide 3 + emoji 2 + spazio 1 + nome + 4 di azioni; "documentazione" si tronca
+  const ui = await $.ui.mount({ plugin: 'info-panel', surface: 'terminal', component: 'Pane', requestId: 'info-panel', props: props(20, 14) })
+  const rows = (await rowsOf(ui)) as Node[]
+  const row = rows.find(one => typeof one !== 'string' && one.props?.key === 'row:docs') as Exclude<Node, string>
+
+  // Tre pulsanti (nome, ↗, →) con le chiavi dir:, open: e cd: seguite dal percorso
+  const keys = (row.children ?? []).filter(child => typeof child !== 'string' && child.type === 'Button').map(child => (child as Exclude<Node, string>).props?.key)
+  expect(keys).toEqual(['dir:docs', 'open:docs', 'cd:docs'])
+  // Con 12 colonne utili: 3 di guide, 2 di emoji, 1 di spazio, 2 per il nome e 4 per le azioni
+  expect(widthOf(row)).toBe(12)
+  expect(await ui.find({ key: 'dir:docs', text: /├─ 📁 d…$/ })).toBeDefined()
+})
+
+test('un clic su una cartella la apre, un secondo la chiude', async ($, on) => {
+  const { listed } = world(on)
   await $.session.start(START)
 
   const ui = await $.ui.mount({ plugin: 'info-panel', surface: 'terminal', component: 'Pane', requestId: 'info-panel', props: props(20) })
@@ -213,10 +323,9 @@ test('un clic su una cartella la apre, un secondo (oltre i 400 ms) la chiude', a
   await ui.press({ key: 'dir:src' })
   expect(listed).toContain('src')
   expect(await ui.find({ text: 'index.ts' })).toBeDefined()
-  expect(await ui.find({ key: 'dir:src', text: new RegExp('\u{e5fe} src/$') })).toBeDefined()
+  expect(await ui.find({ key: 'dir:src', text: /📂 src\/$/ })).toBeDefined()
 
-  // Chiusura, dopo la soglia del doppio clic: il figlio sparisce
-  await clock.advance(500)
+  // Chiusura: il figlio sparisce
   await ui.press({ key: 'dir:src' })
   expect(await ui.find({ text: 'index.ts' })).toBeUndefined()
 })
@@ -298,55 +407,143 @@ test('la rotella sull albero lo scorre da sé, fuori dall albero lascia fare al 
   expect(onAgents.deny).toBeUndefined()
 })
 
-test('un doppio clic su una cartella apre Esplora risorse e la lascia com era', async ($, on) => {
-  const { clock } = world(on)
-  // Il motore sotto process.run: registra il comando e risponde 1, come explorer.exe quando apre
+// Il motore sotto process.run e ui.toast: registra gli avvii e i toast; process.run risponde 1, come explorer.exe quando apre
+const explorer = (on: On, deny?: string) => {
   const runs: (readonly string[])[] = []
+  const toasts: string[] = []
   on('process.run', (_$, e) => {
     runs.push(e.argv)
 
-    return { value: { exitCode: 1, stdout: '', stderr: '' } as never }
+    return deny ? { deny } : { value: { exitCode: 1, stdout: '', stderr: '' } as never }
   })
-  await $.session.start(START)
-
-  const ui = await $.ui.mount({ plugin: 'info-panel', surface: 'terminal', component: 'Pane', requestId: 'info-panel', props: props(20) })
-
-  // Primo clic: la cartella si apre subito, Esplora risorse non parte
-  await ui.press({ key: 'dir:src' })
-  expect(await ui.find({ text: 'index.ts' })).toBeDefined()
-  expect(runs).toEqual([])
-
-  // Secondo clic entro 400 ms: la cartella torna chiusa e si apre Esplora risorse sul suo percorso Windows
-  await clock.advance(300)
-  await ui.press({ key: 'dir:src' })
-  expect(await ui.find({ text: 'index.ts' })).toBeUndefined()
-  expect(runs).toEqual([['explorer.exe', 'C:\\Users\\maurizio\\Claude\\mio-progetto\\src']])
-
-  // Un terzo clic poco dopo è di nuovo un primo clic: si riapre e non parte un secondo Esplora risorse
-  await clock.advance(100)
-  await ui.press({ key: 'dir:src' })
-  expect(await ui.find({ text: 'index.ts' })).toBeDefined()
-  expect(runs.length).toBe(1)
-})
-
-test('se Esplora risorse non si può aprire compare un toast', async ($, on) => {
-  const { clock } = world(on)
-  // process.run rifiutato e toast registrati
-  on('process.run', () => ({ deny: 'comandi non consentiti' }))
-  const toasts: string[] = []
   on('ui.toast', (_$, e) => {
     toasts.push(e.text)
 
     return { value: undefined }
   })
+
+  return { runs, toasts }
+}
+
+// Il motore sotto il comando integrato /cd: registra gli argomenti; con `deny` lo rifiuta
+const cdCommand = (on: On, deny?: string) => {
+  const cds: string[] = []
+  on('command.run', { command: 'cd' }, (_$, e) => {
+    cds.push(e.args)
+
+    return deny ? { deny } : { text: '' }
+  })
+
+  return cds
+}
+
+test('il pulsante ↗ apre Esplora risorse sulla cartella senza cambiarne lo stato', async ($, on) => {
+  world(on)
+  const { runs, toasts } = explorer(on)
   await $.session.start(START)
 
   const ui = await $.ui.mount({ plugin: 'info-panel', surface: 'terminal', component: 'Pane', requestId: 'info-panel', props: props(20) })
-  await ui.press({ key: 'dir:src' })
-  await clock.advance(100)
-  await ui.press({ key: 'dir:src' })
+  await ui.press({ key: 'open:src' })
 
-  expect(toasts).toEqual(['Impossibile aprire Esplora risorse'])
+  // Percorso Windows assoluto: cwd + \ + cartella; la cartella resta chiusa e nessun errore
+  expect(runs).toEqual([['explorer.exe', 'C:\\Users\\maurizio\\Claude\\mio-progetto\\src']])
+  expect(toasts).toEqual([])
+  expect(await ui.find({ text: 'index.ts' })).toBeUndefined()
+})
+
+test('se Esplora risorse non si può aprire il toast dice anche il motivo', async ($, on) => {
+  world(on)
+  const { toasts } = explorer(on, 'comandi non consentiti')
+  await $.session.start(START)
+
+  const ui = await $.ui.mount({ plugin: 'info-panel', surface: 'terminal', component: 'Pane', requestId: 'info-panel', props: props(20) })
+  await ui.press({ key: 'open:src' })
+
+  expect(toasts.length).toBe(1)
+  expect(toasts[0]).toMatch(/^Impossibile aprire Esplora risorse: .*comandi non consentiti/)
+})
+
+test('il pulsante → lancia /cd sul percorso assoluto della cartella', async ($, on) => {
+  world(on)
+  const cds = cdCommand(on)
+  await $.session.start(START)
+
+  const ui = await $.ui.mount({ plugin: 'info-panel', surface: 'terminal', component: 'Pane', requestId: 'info-panel', props: props(20) })
+  await ui.press({ key: 'cd:src' })
+
+  expect(cds).toEqual(['C:\\Users\\maurizio\\Claude\\mio-progetto\\src'])
+})
+
+test('il pulsante ↑ lancia /cd sulla cartella padre', async ($, on) => {
+  world(on)
+  const cds = cdCommand(on)
+  await $.session.start(START)
+
+  const ui = await $.ui.mount({ plugin: 'info-panel', surface: 'terminal', component: 'Pane', requestId: 'info-panel', props: props(20) })
+  await ui.press({ key: 'parent' })
+
+  expect(cds).toEqual(['C:\\Users\\maurizio\\Claude'])
+})
+
+test('se /cd non si può eseguire compare un toast con il motivo', async ($, on) => {
+  world(on)
+  // Nessun comando cd sotto il mod: la chiamata viene rifiutata come per un comando sconosciuto
+  const { toasts } = explorer(on)
+  await $.session.start(START)
+
+  const ui = await $.ui.mount({ plugin: 'info-panel', surface: 'terminal', component: 'Pane', requestId: 'info-panel', props: props(20) })
+  await ui.press({ key: 'cd:src' })
+
+  expect(toasts.length).toBe(1)
+  expect(toasts[0]).toMatch(/^Impossibile cambiare cartella: .+/)
+})
+
+test('alla radice dell unità ↑ non lancia /cd e avvisa', async ($, on) => {
+  const { dir } = world(on)
+  dir.value = 'C:\\'
+  const cds = cdCommand(on)
+  const { toasts } = explorer(on)
+  await $.session.start(START)
+
+  const ui = await $.ui.mount({ plugin: 'info-panel', surface: 'terminal', component: 'Pane', requestId: 'info-panel', props: props(20) })
+  // Il pulsante c'è anche alla radice, ma non fa nulla
+  await ui.press({ key: 'parent' })
+
+  expect(cds).toEqual([])
+  expect(toasts).toEqual(['Già alla radice: non c\'è una cartella padre'])
+})
+
+test('un cambio di cartella di lavoro (/cd) azzera l albero e rilegge la radice', async ($, on) => {
+  const { clock, listed, dir } = world(on)
+  // Esplora risorse finto, registrato prima del primo uso di `$`
+  const { runs } = explorer(on)
+  await $.session.start(START)
+
+  // Apre src: lo stato da azzerare
+  const ui = await $.ui.mount({ plugin: 'info-panel', surface: 'terminal', component: 'Pane', requestId: 'info-panel', props: props(20) })
+  await ui.press({ key: 'dir:src' })
+  expect(await ui.find({ text: 'index.ts' })).toBeDefined()
+  expect(await ui.find({ text: 'mio-progetto/' })).toBeDefined()
+
+  // Senza cambi il timer non rilegge nulla
+  const before = listed.filter(path => path === '').length
+  await clock.advance(1000)
+  expect(listed.filter(path => path === '').length).toBe(before)
+  expect(await ui.find({ text: 'index.ts' })).toBeDefined()
+
+  // La sessione passa a un'altra cartella: al prossimo secondo l'albero riparte chiuso, con la nuova intestazione e la radice riletta
+  dir.value = 'C:\\Users\\maurizio\\Claude\\altro-progetto'
+  await clock.advance(1000)
+  expect(await ui.find({ text: 'index.ts' })).toBeUndefined()
+  expect(await ui.find({ text: 'mio-progetto/' })).toBeUndefined()
+  expect(await ui.find({ text: 'altro-progetto/' })).toBeDefined()
+  expect(listed.filter(path => path === '').length).toBe(before + 1)
+  // Le voci della radice ci sono, con src chiusa
+  expect(await ui.find({ key: 'dir:src', text: /📁 src\/$/ })).toBeDefined()
+
+  // Le azioni ora lavorano sulla nuova cartella
+  await ui.press({ key: 'open:src' })
+  expect(runs).toEqual([['explorer.exe', 'C:\\Users\\maurizio\\Claude\\altro-progetto\\src']])
 })
 
 test('un clic su un file inserisce @percorso nel prompt', async ($, on) => {

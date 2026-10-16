@@ -1,7 +1,16 @@
 {
   "name": "info-panel",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Pannello laterale con l'albero della cartella di lavoro e l'elenco degli agenti con stato e modello.",
   "author": { "name": "Maurizio Pelizzone" },
-  "types": "./types/index.d.ts"
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "icons": {
+      "type": "string",
+      "title": "Set di icone",
+      "description": "Icone dell'albero: emoji (nessun font da installare), nerd (richiede un Nerd Font nel terminale) o simple (simboli Unicode colorati).",
+      "default": "emoji",
+      "options": ["emoji", "nerd", "simple"]
+    }
+  }
 }

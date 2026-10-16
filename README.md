@@ -3,15 +3,19 @@
 Mod per Claude Code che apre un pannello a lato del transcript, diviso in due sezioni:
 
 - **In alto (circa 80%)**: l'albero della cartella di lavoro, con le guide `├─`, `└─` e `│` che mostrano
-  l'indentazione e un'icona per tipo di file (cartelle gialle, file colorati per famiglia: PHP, JavaScript,
+  l'indentazione e un'icona per tipo di file (cartelle gialle, file per famiglia: PHP, JavaScript,
   TypeScript, JSON, Markdown, immagini, archivi e così via).
   Le cartelle vengono prima dei file, tutto in ordine alfabetico; `.git` e `node_modules` non compaiono.
-  Il pulsante `↻` nell'intestazione rilegge le cartelle aperte, che si riallineano da sole anche a fine turno.
   La rotella del mouse sopra l'albero lo scorre.
-  - Un clic su una cartella la apre o la chiude.
-  - Un doppio clic (secondo clic entro 400 ms) riporta la cartella com'era e apre Esplora risorse in quella
-    posizione. Funziona solo su Windows; se l'apertura non riesce compare un avviso.
+  - Nell'intestazione, accanto al nome della cartella di lavoro, due pulsanti: `↑` sposta la cartella di lavoro
+    della sessione sulla cartella padre (alla radice di un'unità non fa nulla e lo segnala), `↻` rilegge le
+    cartelle aperte, che si riallineano da sole anche a fine turno.
+  - Un clic sul nome di una cartella la apre o la chiude. Dopo il nome ogni cartella ha due pulsanti:
+    `↗` apre Esplora risorse su quella cartella (solo Windows; se non riesce compare un avviso con il motivo),
+    `→` ne fa la cartella di lavoro della sessione. Il doppio clic non esiste più.
   - Un clic su un file inserisce `@percorso` nel prompt, alla posizione del cursore.
+  - `↑` e `→` usano il comando integrato `/cd`. Anche un `/cd` digitato a mano viene riconosciuto (entro un
+    secondo): l'albero si chiude e riparte dalla nuova cartella.
 - **In basso (circa 20%)**: l'agente principale e i sub-agenti della sessione, ognuno con l'icona di stato
   (spinner animato se lavora, `✓` concluso, `✗` fallito o fermato, `◌` a riposo) e il modello su cui lavora
   (per esempio `sonnet-5-5`). I sub-agenti attivi stanno in cima, quelli conclusi sono in grigio.
@@ -23,17 +27,16 @@ Attorno al pannello c'è 1 riga e 1 colonna di padding.
 Il modello di ogni agente si ricava dalle richieste al modello (hook `turn.step`), perché l'elenco degli agenti
 non lo riporta; finché un agente non ha fatto una richiesta mostra `n/d`.
 
-## Requisito: un Nerd Font nel terminale
+## Opzioni
 
-Le icone sono glifi Nerd Font, che il terminale disegna solo se il suo font li contiene: senza, al posto delle icone
-compaiono dei quadratini. Il mod non installa font e non tocca la configurazione del terminale.
-Per Tabby su Windows:
+L'opzione `icons` sceglie le icone dell'albero. Si cambia dal menu di configurazione (`/config`, riga del mod)
+o da `/plugin`; il mod si ricarica da solo con il nuovo valore.
 
-1. Scarica `CascadiaCode.zip` da [nerdfonts.com](https://www.nerdfonts.com/font-downloads).
-2. Estrai lo zip e installa i file `.ttf` (clic destro, Installa per tutti gli utenti), in particolare
-   "CaskaydiaCove Nerd Font Mono".
-3. In Tabby apri Impostazioni, poi Aspetto, poi Font, e scegli "CaskaydiaCove Nerd Font Mono".
-4. Riavvia Tabby se il font non compare, poi `/reload-plugins` in Claude Code.
+- `emoji` (predefinito): emoji, nessun font da installare. Occupano 2 colonne, il mod ne tiene conto nei troncamenti.
+  Per esempio 📁 📂 cartelle, 📄 file generico, 🐘 PHP, 🟦 TypeScript, 📝 Markdown, 📦 `package.json`.
+- `nerd`: glifi Nerd Font colorati per famiglia di file. Il terminale li disegna solo se il suo font li contiene,
+  altrimenti compaiono dei quadratini; il mod non installa font e non tocca la configurazione del terminale.
+- `simple`: simboli Unicode colorati (`▪` e `▫` per le cartelle, `●` per i file), senza font speciali.
 
 ## Comandi
 
