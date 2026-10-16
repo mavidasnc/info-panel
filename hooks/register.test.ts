@@ -750,3 +750,24 @@ test('/info-panel con il pannello in attesa (non disegnato) lo apre invece di ch
   expect((await $.command.run({ command: 'info-panel', args: '' })).text).toBe('Pannello info aperto.')
   expect(closed).toEqual([])
 })
+
+// Con pochi o molti agenti la versione è sempre l'ultima riga e il pannello occupa tutte le righe utili (bodyRows - 2)
+for (const count of [0, 1, 8]) {
+  test(`con ${count} sub-agenti la versione resta sull'ultima riga del pannello`, async ($, on) => {
+    const subs = Array.from({ length: count }, (_, index) => ({ id: `a${index}`, name: `agente${index}`, description: '', type: 'Explore', status: 'running' }))
+    const { clock } = world(on, subs)
+    manifest(on, '1.2.3')
+    await $.session.start(START)
+    await clock.advance(1000)
+
+    for (const bodyRows of [8, 12, 20, 30]) {
+      const ui = await $.ui.mount({ plugin: 'info-panel', surface: 'terminal', component: 'Pane', requestId: 'info-panel', props: props(bodyRows) })
+      const rows = (await rowsOf(ui)) as Node[]
+
+      // Righe utili piene, né più né meno, con la versione come ultima
+      expect(rows.length).toBe(bodyRows - 2)
+      expect(JSON.stringify(rows.at(-1))).toContain('info-panel v1.2.3')
+      await ui.unmount()
+    }
+  })
+}

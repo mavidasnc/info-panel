@@ -28,7 +28,7 @@ L'immagine è un'illustrazione con valori di esempio.
 
 Attorno al pannello c'è 1 riga e 1 colonna di padding.
 
-In fondo al pannello, in grigio, c'è la versione del mod (`info-panel v0.4.0`), letta dal suo `plugin.json`:
+In fondo al pannello, in grigio, c'è la versione del mod (`info-panel v0.4.1`), letta dal suo `plugin.json`:
 serve a controllare di avere installata la versione aggiornata (`n/d` se il file non è leggibile).
 
 Il modello di ogni agente si ricava dalle richieste al modello (hook `turn.step`), perché l'elenco degli agenti

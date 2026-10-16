@@ -2,6 +2,11 @@
 
 Formato basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/).
 
+## [0.4.1] - 2026-10-16
+
+### Corretto
+- La riga con la versione sta sempre sull'ultima riga del pannello: prima seguiva subito l'ultimo agente e saliva quando gli agenti erano pochi. La sezione agenti ora si riempie di righe vuote fino al piede.
+
 ## [0.4.0] - 2026-10-16
 
 ### Aggiunto

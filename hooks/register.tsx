@@ -615,6 +615,9 @@ export const register: Register = (on, options) => {
     ]
     const { shown, hidden } = clip(entries, agentLines)
 
+    // Righe vuote che spingono la versione sull'ultima riga del pannello: le righe agenti non usate (il "+n altri" ne occupa una)
+    const agentFillers = Array.from({ length: Math.max(0, agentLines - shown.length - (hidden > 0 ? 1 : 0)) }, () => <Text> </Text>)
+
     // Separatore con il numero di agenti, riempito di trattini fino a fine riga
     const title = `── Agenti (${entries.length}) `
     const separator = fit(title + '─'.repeat(Math.max(0, cols - title.length)), cols)
@@ -713,6 +716,7 @@ export const register: Register = (on, options) => {
           )
         })}
         {hidden > 0 ? <Text dimColor>{fit(`+${hidden} altri`, cols)}</Text> : null}
+        {agentFillers}
         <Text dimColor>{fit(`info-panel ${modVersion ? `v${modVersion}` : 'n/d'}`, cols)}</Text>
       </Box>
     )
